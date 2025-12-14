@@ -1,0 +1,63 @@
+# Git文件
+.git
+.gitignore
+.gitmodules
+
+# Python缓存
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 虚拟环境
+venv
+env
+ENV
+
+# IDE文件
+.vscode
+.idea
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+temp/
+tmp/
+*.tmp
+
+# 模型文件（这些将通过volume挂载）
+tts/third_party/CosyVoice/pretrained_models/
+models/
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# 测试文件
+tests/
+*.test
+coverage.*
+
+# 文档
+README.md
+*.md
+docs/
+
+# 配置文件（可能包含敏感信息）
+.env
+.env.*
+
+# 其他
+.pytest_cache
+.coverage
+node_modules 

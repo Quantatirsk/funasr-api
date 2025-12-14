@@ -1,0 +1,31 @@
+{
+    "models": {
+        "paraformer-large": {
+            "name": "Paraformer Large",
+            "engine": "funasr",
+            "description": "高精度中文语音识别模型",
+            "languages": [
+                "zh"
+            ],
+            "default": true,
+            "supports_realtime": true,
+            "models": {
+                "offline": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+                "realtime": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online"
+            }
+        },
+        "sensevoice-small": {
+            "name": "SenseVoice Small",
+            "engine": "funasr",
+            "description": "通用语音识别模型，支持中英文混合识别",
+            "languages": [
+                "zh",
+                "en"
+            ],
+            "supports_realtime": false,
+            "models": {
+                "offline": "iic/SenseVoiceSmall"
+            }
+        }
+    }
+}
