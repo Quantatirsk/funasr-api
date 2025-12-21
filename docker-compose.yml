@@ -16,18 +16,12 @@ services:
   funasr-api:
     image: quantatrisk/funasr-api:gpu-latest
     container_name: funasr-api
-    gpus:
-      - driver: nvidia
-        device_ids: ["0"]
-        capabilities: [gpu]
     expose:
       - "8000"
     volumes:
       - ./temp:/app/temp
       - ./data:/app/data
       - ./logs:/app/logs
-    env_file:
-      - .env
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
@@ -35,7 +29,6 @@ services:
       - PORT=8000
       - DEVICE=cuda:0
       - NVIDIA_VISIBLE_DEVICES=0
-      - CUDA_VISIBLE_DEVICES=0
       # 多进程会复制模型、显存成倍增加；离线长音频建议保持 1
       - WORKERS=1
       # 推理线程池大小决定“同时跑推理的数量”，其余请求会在队列中等待
