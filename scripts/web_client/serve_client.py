@@ -8,6 +8,9 @@ Originally inspired by:
 
 The current implementation has been significantly modified
 and extended for this project.
+Main modifications:
+  - Adapted the client-side WebSocket logic to be compatible with
+    Alibaba Cloud ASR WebSocket API
 """
 import http.server
 import socketserver
