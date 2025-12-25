@@ -1,0 +1,592 @@
+<!--
+FunASR-Nano-2512 ASR Web Client
+作者：凌封
+来源：https://aibook.ren (AI全书)
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xiaozhi ASR Web Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        .config-panel {
+            background: #eef2f7;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-group label {
+            width: 100px;
+            font-weight: bold;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        button {
+            padding: 10px 25px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+            margin: 0 10px;
+        }
+
+        .btn-start {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .btn-start:hover {
+            background-color: #218838;
+        }
+
+        .btn-start:disabled {
+            background-color: #94d3a2;
+            cursor: not-allowed;
+        }
+
+        .btn-stop {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background-color: #c82333;
+        }
+
+        .btn-stop:disabled {
+            background-color: #e4b5b9;
+            cursor: not-allowed;
+        }
+
+        .status-bar {
+            text-align: center;
+            margin-bottom: 15px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .status-connected {
+            color: #28a745;
+        }
+
+        .status-disconnected {
+            color: #dc3545;
+        }
+
+        .result-box {
+            border: 1px solid #ddd;
+            padding: 20px;
+            height: 300px;
+            overflow-y: auto;
+            background: #fafafa;
+            border-radius: 5px;
+            line-height: 1.6;
+        }
+
+        .text-final {
+            color: #000;
+        }
+
+        .text-streaming {
+            color: #999;
+        }
+
+        .log-panel {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Fun-ASR-Nano-2512 实时测试</h1>
+
+        <div class="config-panel">
+            <div class="input-group">
+                <label>WebSocket URL:</label>
+                <input type="text" id="ws_url" value="ws://部署ASR的服务器IP:8000/ws/v1/asr" placeholder="ws://ip:port">
+            </div>
+            <div class="input-group">
+                <label>协议:</label>
+                <input type="text" value="阿里云WebSocket ASR协议" readonly style="flex:1; padding:8px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px;">
+            </div>
+        </div>
+
+        <div class="status-bar" id="status_div">状态: 未连接</div>
+
+        <div class="controls">
+            <button id="btn_start" class="btn-start" onclick="startRecording()">开始录音</button>
+            <button id="btn_stop" class="btn-stop" onclick="stopRecording()" disabled>停止录音</button>
+        </div>
+
+        <div class="result-box" id="result_div">
+            <div style="color:#ccc; text-align:center; margin-top:100px;">点击“开始录音”说话...</div>
+        </div>
+
+        <div class="log-panel" id="log_div"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let scriptProcessor = null;
+        let audioInput = null;
+        let inputStream = null;
+        let isRecording = false;
+        let taskId = null; // 阿里云协议任务ID
+        let sessionId = null; // 阿里云协议会话ID
+        let transcriptionStarted = false; // 是否已收到TranscriptionStarted
+
+        // Resampling Config
+        const TARGET_SAMPLE_RATE = 16000;
+
+        // 阿里云协议常量
+        const ASR_NAMESPACE = "SpeechTranscriber";
+        const MSG_START_TRANSCRIPTION = "StartTranscription";
+        const MSG_STOP_TRANSCRIPTION = "StopTranscription";
+        const MSG_TRANSCRIPTION_STARTED = "TranscriptionStarted";
+        const MSG_TRANSCRIPTION_RESULT_CHANGED = "TranscriptionResultChanged";
+        const MSG_SENTENCE_END = "SentenceEnd";
+        const MSG_TRANSCRIPTION_COMPLETED = "TranscriptionCompleted";
+        const MSG_TASK_FAILED = "TaskFailed";
+
+        // UI Elements
+        const btnStart = document.getElementById('btn_start');
+        const btnStop = document.getElementById('btn_stop');
+        const resultDiv = document.getElementById('result_div');
+        const statusDiv = document.getElementById('status_div');
+        const wsUrlInput = document.getElementById('ws_url');
+        
+        // 句子状态管理
+        let sentences = []; // 存储所有句子的数组，每个句子包含 {index, text, isFinal, streamingText}
+        let currentSentenceIndex = 0; // 当前正在识别的句子索引
+        let currentStreamingText = ""; // 当前句子的流式识别文本
+
+        // Auto-detect host
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            wsUrlInput.value = `ws://${window.location.hostname}:8000/ws/v1/asr`;
+        }
+
+        function log(msg) {
+            console.log(msg);
+            // document.getElementById('log_div').innerText = msg;
+        }
+
+        function updateStatus(msg, type) {
+            statusDiv.innerText = "状态: " + msg;
+            statusDiv.className = "status-bar " + (type || "");
+        }
+
+        // 渲染所有句子
+        function renderAllSentences() {
+            let html = "";
+            
+            // 渲染所有已完成的句子
+            sentences.forEach(sentence => {
+                if (sentence.isFinal) {
+                    // 最终结果
+                    html += `<span class="text-final">${sentence.text}</span><br>`;
+                } else if (sentence.streamingText) {
+                    // 流式识别中间结果
+                    html += `<span class="text-streaming">${sentence.streamingText}</span><br>`;
+                }
+            });
+            
+            // 如果有当前流式识别文本，添加到末尾
+            if (currentStreamingText) {
+                html += `<span class="text-streaming">${currentStreamingText}</span>`;
+            }
+            
+            resultDiv.innerHTML = html;
+            resultDiv.scrollTop = resultDiv.scrollHeight;
+        }
+
+        // 生成32位唯一ID
+        function generateId() {
+            return 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            }).replace(/-/g, '').substring(0, 32);
+        }
+
+        // 创建阿里云协议消息头部
+        function createHeader(name, namespace) {
+            if (!taskId) {
+                taskId = generateId();
+            }
+            return {
+                "message_id": generateId(),
+                "task_id": taskId,
+                "namespace": namespace,
+                "name": name
+            };
+        }
+
+        // 发送StartTranscription消息
+        function sendStartTranscription() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log("WebSocket未连接，无法发送StartTranscription");
+                return;
+            }
+
+            const message = {
+                "header": createHeader(MSG_START_TRANSCRIPTION, ASR_NAMESPACE),
+                "payload": {
+                    "format": "pcm",
+                    "sample_rate": TARGET_SAMPLE_RATE,
+                    "enable_intermediate_result": true,
+                    "enable_punctuation_prediction": true,
+                    "enable_inverse_text_normalization": true,
+                    "max_sentence_silence": 800,
+                }
+            };
+            ws.send(JSON.stringify(message));
+            log("已发送StartTranscription消息");
+        }
+
+        // 发送StopTranscription消息
+        function sendStopTranscription() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log("WebSocket未连接，无法发送StopTranscription");
+                return;
+            }
+
+            const message = {
+                "header": createHeader(MSG_STOP_TRANSCRIPTION, ASR_NAMESPACE)
+            };
+            ws.send(JSON.stringify(message));
+            log("已发送StopTranscription消息");
+        }
+
+        // 处理阿里云协议消息
+        function handleAliyunMessage(data) {
+            const header = data.header || {};
+            const name = header.name || "";
+            const payload = data.payload || {};
+
+            log(`收到消息: ${name}`);
+
+            switch (name) {
+                case MSG_TRANSCRIPTION_STARTED:
+                    transcriptionStarted = true;
+                    sessionId = payload.session_id;
+                    updateStatus("已连接，正在录音...", "status-connected");
+                    log(`TranscriptionStarted, session_id: ${sessionId}`);
+                    // 开始音频采集
+                    startAudioCapture();
+                    break;
+
+                case MSG_TRANSCRIPTION_RESULT_CHANGED:
+                    const index = payload.index || 0;
+                    const result = payload.result || "";
+                    if (result) {
+                        // 更新或创建句子
+                        let sentence = sentences.find(s => s.index === index);
+                        if (!sentence) {
+                            sentence = {
+                                index: index,
+                                text: "",
+                                isFinal: false,
+                                streamingText: result
+                            };
+                            sentences.push(sentence);
+                        } else {
+                            sentence.streamingText = result;
+                        }
+                        
+                        // 更新当前句子索引
+                        currentSentenceIndex = index;
+                        currentStreamingText = "";
+                        
+                        renderAllSentences();
+                        log(`中间结果[${index}]: ${result}`);
+                    }
+                    break;
+
+                case MSG_SENTENCE_END:
+                    const finalIndex = payload.index || 0;
+                    const finalResult = payload.result || "";
+                    if (finalResult) {
+                        // 查找对应的句子
+                        let sentence = sentences.find(s => s.index === finalIndex);
+                        if (!sentence) {
+                            // 如果没有找到对应的中间结果，创建新句子
+                            sentence = {
+                                index: finalIndex,
+                                text: finalResult,
+                                isFinal: true,
+                                streamingText: ""
+                            };
+                            sentences.push(sentence);
+                        } else {
+                            // 更新句子为最终结果
+                            sentence.text = finalResult;
+                            sentence.isFinal = true;
+                            sentence.streamingText = ""; // 清空流式文本
+                        }
+                        
+                        // 清空当前流式文本
+                        currentStreamingText = "";
+                        
+                        renderAllSentences();
+                        log(`句子结束[${finalIndex}]: ${finalResult}`);
+                    }
+                    break;
+
+                case MSG_TRANSCRIPTION_COMPLETED:
+                    log("识别完成");
+                    // 等待一会儿后关闭连接
+                    setTimeout(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                        }
+                    }, 500);
+                    break;
+
+                case MSG_TASK_FAILED:
+                    const statusText = header.status_text || "Unknown error";
+                    log(`任务失败: ${statusText}`);
+                    updateStatus(`任务失败: ${statusText}`, "status-disconnected");
+                    stopRecording();
+                    break;
+
+                default:
+                    log(`未知消息类型: ${name}`);
+            }
+        }
+
+        async function startRecording() {
+            try {
+                // 重置状态
+                taskId = null;
+                sessionId = null;
+                transcriptionStarted = false;
+                currentSentenceIndex = 0;
+                currentStreamingText = "";
+                sentences = [];
+                
+                // 1. Initialize WebSocket
+                const url = wsUrlInput.value;
+                // 重要: 服务端指定了 subprotocols=["binary"]，客户端必须匹配，否则握手失败
+                ws = new WebSocket(url, []);
+                ws.binaryType = "arraybuffer";
+
+                updateStatus("正在连接...", "status-disconnected");
+
+                ws.onopen = () => {
+                    log("WebSocket Connected");
+                    updateStatus("已连接，等待服务器响应...", "status-connected");
+                    
+                    // 发送StartTranscription消息（阿里云协议）
+                    sendStartTranscription();
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        // 尝试解析JSON消息
+                        const data = JSON.parse(event.data);
+                        // 处理阿里云协议消息
+                        handleAliyunMessage(data);
+                    } catch (e) {
+                        log("消息解析失败: " + e.message);
+                    }
+                };
+
+                ws.onerror = (e) => {
+                    log("WS Error: " + e);
+                    updateStatus("WebSocket 错误", "status-disconnected");
+                    stopRecording();
+                };
+
+                ws.onclose = () => {
+                    log("WS Closed");
+                    if (isRecording) stopRecording();
+                    updateStatus("连接已断开", "status-disconnected");
+                };
+
+                btnStart.disabled = true;
+                btnStop.disabled = false;
+                isRecording = true;
+                resultDiv.innerHTML = "";
+
+            } catch (e) {
+                alert("Error: " + e.message);
+                console.error(e);
+            }
+        }
+
+        async function startAudioCapture() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                inputStream = stream;
+
+                // Create Audio Context
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+
+                const source = audioContext.createMediaStreamSource(stream);
+                // Use a larger buffer for script processor to reduce callback freq
+                const bufferSize = 4096;
+                scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+                source.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
+
+                log(`Audio Sample Rate: ${audioContext.sampleRate}`);
+
+                // Buffer to hold raw float32 data until we have enough for a chunk
+                let audioBuffer = [];
+                // Target chunk duration (ms)
+                const CHUNK_DURATION_MS = 60;
+                // Target samples per chunk (16000Hz * 60ms = 960 samples)
+                const SAMPLES_PER_CHUNK = TARGET_SAMPLE_RATE * CHUNK_DURATION_MS / 1000;
+
+                scriptProcessor.onaudioprocess = (e) => {
+                    if (!isRecording || !transcriptionStarted) return;
+
+                    const inputData = e.inputBuffer.getChannelData(0); // Float32: -1.0 ~ 1.0
+
+                    // 1. Resample to 16000Hz and append to buffer
+                    const resampledData = resampleToFloat(inputData, audioContext.sampleRate, TARGET_SAMPLE_RATE);
+
+                    // Store in global buffer
+                    for (let i = 0; i < resampledData.length; i++) {
+                        audioBuffer.push(resampledData[i]);
+                    }
+
+                    // 2. Send in fixed 60ms chunks (960 samples)
+                    while (audioBuffer.length >= SAMPLES_PER_CHUNK) {
+                        const chunk = audioBuffer.slice(0, SAMPLES_PER_CHUNK);
+                        audioBuffer = audioBuffer.slice(SAMPLES_PER_CHUNK);
+
+                        // Convert chunk to Int16
+                        const pcmData = floatTo16BitPCM(new Float32Array(chunk));
+
+                        // Send via WebSocket
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(pcmData);
+                        }
+                    }
+                };
+
+            } catch (e) {
+                alert("无法获取麦克风权限，请确保使用 localhost 或 https 访问，或参考服务器终端的提示配置 Chrome Flag。\n错误信息: " + e.message);
+                stopRecording();
+            }
+        }
+
+        // Helper: Resample and return Float32Array (no Int16 conversion yet)
+        function resampleToFloat(audioData, sampleRate, targetSampleRate) {
+            if (sampleRate === targetSampleRate) {
+                return audioData;
+            }
+            const ratio = sampleRate / targetSampleRate;
+            const newLength = Math.round(audioData.length / ratio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetSource = 0;
+            while (offsetResult < newLength) {
+                const nextOffsetSource = Math.round((offsetResult + 1) * ratio);
+                let accum = 0;
+                let count = 0;
+                for (let i = offsetSource; i < nextOffsetSource && i < audioData.length; i++) {
+                    accum += audioData[i];
+                    count++;
+                }
+                result[offsetResult] = count > 0 ? accum / count : 0;
+                offsetResult++;
+                offsetSource = nextOffsetSource;
+            }
+            return result;
+        }
+
+        function stopRecording() {
+            if (!isRecording) return;
+            isRecording = false;
+
+            // Stop Audio
+            if (inputStream) {
+                inputStream.getTracks().forEach(track => track.stop());
+            }
+            if (scriptProcessor) scriptProcessor.disconnect();
+            if (audioContext) audioContext.close();
+
+            // 发送StopTranscription消息（阿里云协议）
+            if (ws && ws.readyState === WebSocket.OPEN && transcriptionStarted) {
+                sendStopTranscription();
+                // 等待一会儿后关闭连接，让服务器有时间发送最终结果
+                setTimeout(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.close();
+                    }
+                }, 1000);
+            } else if (ws && ws.readyState === WebSocket.OPEN) {
+                // 如果还没有收到TranscriptionStarted，直接关闭连接
+                ws.close();
+            }
+
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            updateStatus("录音结束", "status-bar");
+        }
+
+        function floatTo16BitPCM(input) {
+            const output = new Int16Array(input.length);
+            for (let i = 0; i < input.length; i++) {
+                const s = Math.max(-1, Math.min(1, input[i])); // Clamp
+                output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return output.buffer;
+        }
+    </script>
+
+</body>
+
+</html>
