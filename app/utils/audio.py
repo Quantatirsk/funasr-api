@@ -48,7 +48,7 @@ def validate_sample_rate(sample_rate: Optional[int]) -> bool:
     return sample_rate in SampleRate.get_enums()
 
 
-def download_audio_from_url(url: str, max_size: int = None) -> bytes:
+def download_audio_from_url(url: str, max_size: Optional[int] = None) -> bytes:
     """从URL下载音频文件
 
     Args:
@@ -147,7 +147,7 @@ def load_audio_file(audio_path: str, target_sr: int = 16000) -> Tuple[np.ndarray
     try:
         # 使用librosa加载音频
         audio_data, sr = librosa.load(audio_path, sr=target_sr)
-        return audio_data, sr
+        return audio_data, int(sr)
     except Exception as e:
         raise DefaultServerErrorException(f"加载音频文件失败: {str(e)}")
 
@@ -255,7 +255,7 @@ def save_audio_array(
     output_path: str,
     sample_rate: int = 22050,
     format: str = "wav",
-    original_sr: int = None,
+    original_sr: Optional[int] = None,
     volume: int = 50,
 ) -> str:
     """保存音频数组到文件
@@ -318,7 +318,7 @@ def save_audio_array(
 
 
 def convert_audio_to_wav(
-    input_path: str, output_path: str = None, target_sr: int = 16000
+    input_path: str, output_path: Optional[str] = None, target_sr: int = 16000
 ) -> str:
     """转换音频文件为WAV格式
 
@@ -338,7 +338,7 @@ def convert_audio_to_wav(
 
     try:
         # 使用librosa加载并重采样
-        audio_data, sr = librosa.load(input_path, sr=target_sr)
+        audio_data, _ = librosa.load(input_path, sr=target_sr)
         sf.write(output_path, audio_data, target_sr, format="WAV")
         return output_path
 
@@ -387,7 +387,7 @@ def normalize_audio_for_asr(audio_path: str, target_sr: int = 16000) -> str:
         # 如果已经是WAV格式且采样率正确，直接返回
         if file_ext == ".wav":
             # 检查采样率
-            audio_data, sr = librosa.load(audio_path, sr=None)
+            _, sr = librosa.load(audio_path, sr=None)
             if sr == target_sr:
                 return audio_path
 

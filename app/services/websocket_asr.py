@@ -33,10 +33,13 @@ import logging
 import numpy as np
 import soundfile as sf
 import io
-from typing import Optional, Dict
+from typing import Optional, Dict, TYPE_CHECKING, cast
 from enum import IntEnum
 
 from fastapi import WebSocketDisconnect
+
+if TYPE_CHECKING:
+    from .asr.engine import FunASREngine, BaseASREngine
 
 from ..core.config import settings
 from ..core.executor import run_sync
@@ -75,10 +78,11 @@ class AliyunWebSocketASRService:
         except Exception as e:
             logger.warning(f"清理WebSocket ASR资源异常: {e}")
 
-    def _ensure_asr_engine(self):
+    def _ensure_asr_engine(self) -> "BaseASREngine":
         """确保ASR引擎已加载"""
         if self.asr_engine is None:
             self._initialize_engine()
+        assert self.asr_engine is not None, "ASR引擎初始化失败"
         return self.asr_engine
 
     def _initialize_engine(self):
@@ -187,6 +191,13 @@ class AliyunWebSocketASRService:
                                 if message_task_id != task_id:
                                     await self._send_task_failed(
                                         websocket, task_id, "Task ID not match"
+                                    )
+                                    continue
+
+                                # 确保 transcription_params 已设置
+                                if not transcription_params:
+                                    await self._send_task_failed(
+                                        websocket, task_id, "StartTranscription not received"
                                     )
                                     continue
 
@@ -672,8 +683,11 @@ class AliyunWebSocketASRService:
             )
 
             # 使用线程池执行模型推理，避免阻塞事件循环
+            # 将 asr_engine 转换为 FunASREngine 以访问 realtime_model
+            funasr_engine = cast("FunASREngine", asr_engine)
+            assert funasr_engine.realtime_model is not None, "实时模型未加载"
             result = await run_sync(
-                asr_engine.realtime_model.generate,
+                funasr_engine.realtime_model.generate,
                 input=audio_array,
                 cache=cache,
                 is_final=is_final,

@@ -200,7 +200,7 @@ async def list_models(request: Request):
 `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`, `flac`, `ogg`, `amr`, `pcm`
 
 **文件大小限制：**
-- 最大支持 300MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
+- 最大支持 2048MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
 - OpenAI 原生限制为 25MB
 
 **输出格式：**

@@ -22,9 +22,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Union
-
-from tqdm import tqdm
+from typing import List
 
 from .config import TestConfig
 from .clients.asr_client import ASRWebSocketClient
@@ -70,6 +68,10 @@ class ConcurrentBenchmark:
             各并发级别的聚合指标列表
         """
         logger.info("开始 ASR 并发性能测试...")
+
+        # 检查音频文件
+        if self.config.asr_audio_file is None:
+            raise ValueError("ASR 测试需要提供音频文件")
 
         # 加载音频文件
         audio_data, audio_duration = load_audio_file(

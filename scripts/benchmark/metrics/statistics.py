@@ -61,19 +61,19 @@ def calculate_asr_statistics(
         failed_requests=len(failed),
         total_test_time_seconds=total_test_time,
         # 首次延迟
-        first_latency_avg=np.mean(first_latencies) if first_latencies else 0.0,
+        first_latency_avg=float(np.mean(first_latencies)) if first_latencies else 0.0,
         first_latency_p50=calculate_percentile(first_latencies, 50),
         first_latency_p95=calculate_percentile(first_latencies, 95),
         first_latency_p99=calculate_percentile(first_latencies, 99),
         first_latency_max=max(first_latencies) if first_latencies else 0.0,
         # 总时间
-        total_time_avg=np.mean(total_times) if total_times else 0.0,
+        total_time_avg=float(np.mean(total_times)) if total_times else 0.0,
         total_time_p50=calculate_percentile(total_times, 50),
         total_time_p95=calculate_percentile(total_times, 95),
         total_time_p99=calculate_percentile(total_times, 99),
         total_time_max=max(total_times) if total_times else 0.0,
         # RTF
-        rtf_avg=np.mean(rtfs) if rtfs else 0.0,
+        rtf_avg=float(np.mean(rtfs)) if rtfs else 0.0,
         rtf_p50=calculate_percentile(rtfs, 50),
         rtf_p95=calculate_percentile(rtfs, 95),
         rtf_p99=calculate_percentile(rtfs, 99),
@@ -117,19 +117,19 @@ def calculate_tts_statistics(
         failed_requests=len(failed),
         total_test_time_seconds=total_test_time,
         # 首包延迟
-        first_latency_avg=np.mean(first_latencies) if first_latencies else 0.0,
+        first_latency_avg=float(np.mean(first_latencies)) if first_latencies else 0.0,
         first_latency_p50=calculate_percentile(first_latencies, 50),
         first_latency_p95=calculate_percentile(first_latencies, 95),
         first_latency_p99=calculate_percentile(first_latencies, 99),
         first_latency_max=max(first_latencies) if first_latencies else 0.0,
         # 总时间
-        total_time_avg=np.mean(total_times) if total_times else 0.0,
+        total_time_avg=float(np.mean(total_times)) if total_times else 0.0,
         total_time_p50=calculate_percentile(total_times, 50),
         total_time_p95=calculate_percentile(total_times, 95),
         total_time_p99=calculate_percentile(total_times, 99),
         total_time_max=max(total_times) if total_times else 0.0,
         # RTF
-        rtf_avg=np.mean(rtfs) if rtfs else 0.0,
+        rtf_avg=float(np.mean(rtfs)) if rtfs else 0.0,
         rtf_p50=calculate_percentile(rtfs, 50),
         rtf_p95=calculate_percentile(rtfs, 95),
         rtf_p99=calculate_percentile(rtfs, 99),
@@ -157,8 +157,12 @@ def calculate_statistics(
         raise ValueError("指标列表不能为空")
 
     if isinstance(metrics_list[0], ASRMetrics):
-        return calculate_asr_statistics(metrics_list, concurrency_level, total_test_time)
+        # 类型缩窄：确保类型检查器知道这是 List[ASRMetrics]
+        asr_metrics_list: List[ASRMetrics] = [m for m in metrics_list if isinstance(m, ASRMetrics)]
+        return calculate_asr_statistics(asr_metrics_list, concurrency_level, total_test_time)
     elif isinstance(metrics_list[0], TTSMetrics):
-        return calculate_tts_statistics(metrics_list, concurrency_level, total_test_time)
+        # 类型缩窄：确保类型检查器知道这是 List[TTSMetrics]
+        tts_metrics_list: List[TTSMetrics] = [m for m in metrics_list if isinstance(m, TTSMetrics)]
+        return calculate_tts_statistics(tts_metrics_list, concurrency_level, total_test_time)
     else:
         raise TypeError(f"不支持的指标类型: {type(metrics_list[0])}")

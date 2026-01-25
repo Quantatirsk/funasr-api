@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
+from typing import Optional
 
 # 设置中文显示
 plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
@@ -188,7 +189,7 @@ def print_statistics(rms_values: np.ndarray, threshold: float = 0.01):
 
 
 def plot_rms_timeline(time_points: np.ndarray, rms_values: np.ndarray,
-                      threshold: float = 0.01, save_path: str = None):
+                      threshold: float = 0.01, save_path: Optional[str] = None):
     """绘制RMS时序图
 
     Args:
@@ -197,7 +198,7 @@ def plot_rms_timeline(time_points: np.ndarray, rms_values: np.ndarray,
         threshold: 阈值线
         save_path: 保存路径
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+    _, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
 
     # 上图: RMS时序
     ax1.plot(time_points, rms_values, linewidth=1, label='RMS Energy', color='steelblue')

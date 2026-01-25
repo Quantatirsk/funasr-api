@@ -4,7 +4,7 @@ Matplotlib 图表生成器
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -81,8 +81,9 @@ class ChartGenerator:
         output_path: Path,
     ) -> None:
         """生成首次延迟对比图"""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        _fig, ax = plt.subplots(figsize=(10, 6))
 
+        levels = []
         if asr_results:
             levels = [r.concurrency_level for r in asr_results]
             avg_values = [r.first_latency_avg for r in asr_results]
@@ -108,7 +109,8 @@ class ChartGenerator:
         ax.set_title('首次响应延迟 vs 并发数', fontsize=14, fontweight='bold')
         ax.legend(loc='best')
         ax.grid(True, alpha=0.3)
-        ax.set_xticks(levels if asr_results else [r.concurrency_level for r in tts_results])
+        if levels:
+            ax.set_xticks(levels)
 
         plt.tight_layout()
         plt.savefig(output_path, dpi=150)
@@ -121,7 +123,7 @@ class ChartGenerator:
         output_path: Path,
     ) -> None:
         """生成 RTF 对比图"""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        _fig, ax = plt.subplots(figsize=(10, 6))
 
         if asr_results:
             levels = [r.concurrency_level for r in asr_results]
@@ -170,7 +172,7 @@ class ChartGenerator:
         output_path: Path,
     ) -> None:
         """生成吞吐量柱状图"""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        _fig, ax = plt.subplots(figsize=(10, 6))
 
         all_levels = sorted(set(
             [r.concurrency_level for r in asr_results] +
@@ -200,7 +202,7 @@ class ChartGenerator:
         ax.set_ylabel('吞吐量 (req/s)', fontsize=12)
         ax.set_title('吞吐量 vs 并发数', fontsize=14, fontweight='bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(all_levels)
+        ax.set_xticklabels([str(level) for level in all_levels])
         ax.legend(loc='best')
         ax.grid(True, alpha=0.3, axis='y')
 
@@ -215,7 +217,7 @@ class ChartGenerator:
         output_path: Path,
     ) -> None:
         """生成总时间对比图"""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        _fig, ax = plt.subplots(figsize=(10, 6))
 
         if asr_results:
             levels = [r.concurrency_level for r in asr_results]

@@ -11,7 +11,6 @@ import json
 import time
 import logging
 import wave
-import io
 from pathlib import Path
 from typing import Optional
 
@@ -227,6 +226,9 @@ class TTSWebSocketClient(BaseWebSocketClient):
 
     def _save_audio(self) -> None:
         """保存收到的音频数据为 WAV 文件"""
+        if self.save_audio_dir is None:
+            return
+
         try:
             # 合并所有音频块
             audio_data = b"".join(self._audio_chunks)

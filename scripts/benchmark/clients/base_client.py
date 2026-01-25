@@ -3,15 +3,13 @@
 WebSocket 客户端基类
 """
 
-import asyncio
 import json
 import uuid
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
-import websockets
-from websockets.exceptions import ConnectionClosed
+from websockets.legacy.client import connect, WebSocketClientProtocol  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ class BaseWebSocketClient(ABC):
         """
         self.ws_url = ws_url
         self.timeout = timeout
-        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.websocket: Optional[WebSocketClientProtocol] = None
         self.task_id = self._generate_id()
 
     @staticmethod
@@ -39,7 +37,7 @@ class BaseWebSocketClient(ABC):
 
     async def connect(self) -> None:
         """建立 WebSocket 连接"""
-        self.websocket = await websockets.connect(
+        self.websocket = await connect(
             self.ws_url,
             ping_interval=None,
             ping_timeout=None,

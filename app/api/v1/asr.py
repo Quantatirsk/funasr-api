@@ -89,7 +89,7 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 - 支持多种音频格式：WAV, MP3, M4A, FLAC, OGG, AAC, AMR 等
 - 自动音频格式检测和转换
 - 支持长音频自动分段识别（返回带时间戳的分段结果）
-- 最大文件大小：300MB（可通过环境变量 MAX_AUDIO_SIZE 配置）
+- 最大文件大小：1024MB（可通过环境变量 MAX_AUDIO_SIZE 配置）
 
 ## 可用模型
 - **paraformer-large**（默认）：高精度中文语音识别，内置VAD+标点

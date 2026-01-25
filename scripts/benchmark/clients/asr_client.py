@@ -189,6 +189,9 @@ class ASRWebSocketClient(BaseWebSocketClient):
 
     def _save_result(self, result_text: str) -> None:
         """保存识别结果到文本文件"""
+        if self.save_result_dir is None:
+            return
+
         try:
             filename = f"{self.task_id[:8]}_{int(self.audio_duration_ms)}ms.txt"
             filepath = self.save_result_dir / filename
