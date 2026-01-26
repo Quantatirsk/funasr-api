@@ -279,7 +279,7 @@ class BaseASREngine(ABC):
                 elif audio_segments:
                     AudioSplitter.cleanup_segments(audio_segments)
 
-            full_text = "".join(all_texts)
+            full_text = "\n".join(all_texts)
 
             logger.info(
                 f"长音频识别完成，共 {len(results)} 个有效分段，"
