@@ -15,6 +15,7 @@
 ## 主要特性
 
 - **多模型支持** - 集成 Paraformer Large 和 Fun-ASR-Nano 2 个高质量 ASR 模型
+- **说话人分离** - 基于 CAM++ 模型自动识别多说话人，返回说话人标记
 - **OpenAI API 兼容** - 支持 `/v1/audio/transcriptions` 端点，可直接使用 OpenAI SDK
 - **阿里云 API 兼容** - 支持阿里云语音识别 RESTful API 和 WebSocket 流式协议
 - **WebSocket 流式识别** - 支持实时流式语音识别，低延迟
@@ -74,9 +75,19 @@ python start.py
 | `/v1/audio/transcriptions` | POST | 音频转写（OpenAI 兼容） |
 | `/v1/models` | GET | 模型列表 |
 
+**请求参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `file` | file | 必填 | 音频文件 |
+| `model` | string | `paraformer-large` | 模型选择 |
+| `language` | string | 自动检测 | 语言代码 (zh/en/ja) |
+| `enable_speaker_diarization` | bool | `true` | 启用说话人分离 |
+| `response_format` | string | `json` | 输出格式 |
+
 **使用示例:**
 
-```bash
+```python
 # 使用 OpenAI SDK
 from openai import OpenAI
 
@@ -86,7 +97,7 @@ with open("audio.wav", "rb") as f:
     transcript = client.audio.transcriptions.create(
         model="whisper-1",  # 会映射到默认模型
         file=f,
-        response_format="json"
+        response_format="verbose_json"  # 获取分段和说话人信息
     )
 print(transcript.text)
 ```
@@ -96,8 +107,9 @@ print(transcript.text)
 curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
   -H "Authorization: Bearer any" \
   -F "file=@audio.wav" \
-  -F "model=whisper-1" \
-  -F "response_format=json"
+  -F "model=paraformer-large" \
+  -F "response_format=verbose_json" \
+  -F "enable_speaker_diarization=true"
 ```
 
 **支持的响应格式:** `json`, `text`, `srt`, `vtt`, `verbose_json`
@@ -106,21 +118,81 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 
 | 端点 | 方法 | 功能 |
 |------|------|------|
-| `/stream/v1/asr` | POST | 一句话语音识别 |
+| `/stream/v1/asr` | POST | 语音识别（支持长音频） |
 | `/stream/v1/asr/models` | GET | 模型列表 |
 | `/stream/v1/asr/health` | GET | 健康检查 |
 | `/ws/v1/asr` | WebSocket | 流式语音识别 |
 | `/ws/v1/asr/test` | GET | WebSocket 测试页面 |
 
+**请求参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `model_id` | string | `paraformer-large` | 模型 ID |
+| `audio_address` | string | - | 音频 URL（可选） |
+| `sample_rate` | int | `16000` | 采样率 |
+| `enable_speaker_diarization` | bool | `true` | 启用说话人分离 |
+| `vocabulary_id` | string | - | 热词（格式：`词1 权重1 词2 权重2`） |
+
 **使用示例:**
 
 ```bash
+# 基本用法
 curl -X POST "http://localhost:8000/stream/v1/asr" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @audio.wav
+
+# 带参数
+curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=true" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @audio.wav
 ```
 
+**响应示例:**
+
+```json
+{
+  "task_id": "xxx",
+  "status": 200,
+  "message": "SUCCESS",
+  "result": "说话人1的内容...\n说话人2的内容...",
+  "duration": 60.5,
+  "segments": [
+    {
+      "text": "今天天气不错。",
+      "start_time": 0.0,
+      "end_time": 2.5,
+      "speaker_id": "说话人1"
+    },
+    {
+      "text": "是的，适合出去走走。",
+      "start_time": 2.8,
+      "end_time": 5.2,
+      "speaker_id": "说话人2"
+    }
+  ]
+}
+```
+
 **WebSocket 流式识别测试:** 访问 `http://localhost:8000/ws/v1/asr/test`
+
+## 说话人分离
+
+基于 CAM++ 模型实现多说话人自动识别：
+
+- **默认开启** - `enable_speaker_diarization=true`
+- **自动识别** - 无需预设说话人数量，模型自动检测
+- **说话人标记** - 响应中包含 `speaker_id` 字段（如 "说话人1"、"说话人2"）
+- **字幕支持** - SRT/VTT 格式输出包含说话人标记 `[说话人1] 文本内容`
+
+关闭说话人分离：
+```bash
+# OpenAI API
+-F "enable_speaker_diarization=false"
+
+# 阿里云 API
+?enable_speaker_diarization=false
+```
 
 ## 支持的模型
 
