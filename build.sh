@@ -245,25 +245,43 @@ build_cpu() {
 
     local build_args="--platform $PLATFORM -t $tag -f Dockerfile"
 
-    if [ "$PUSH" = "true" ]; then
+    # 多架构只能 push
+    if [[ "$PLATFORM" == *","* ]]; then
+        if [ "$PUSH" != "true" ]; then
+            warn "多架构构建需要 --push，将自动启用推送"
+        fi
         build_args="$build_args --push"
+    elif [ "$PUSH" = "true" ]; then
+        build_args="$build_args --push"
+    elif [ "$EXPORT_TAR" = "true" ]; then
+        # 直接通过 buildx 导出为 tar
+        local arch_suffix=""
+        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
+        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-cpu-${VERSION}-${arch_suffix}.tar"
+        mkdir -p "$EXPORT_DIR"
+        build_args="$build_args --output type=docker,dest=${tar_file}"
+        info "将直接导出到: ${tar_file}.gz"
     else
         build_args="$build_args --load"
-    fi
-
-    # 多架构只能 push，不能 load
-    if [[ "$PLATFORM" == *","* ]] && [ "$PUSH" != "true" ]; then
-        warn "多架构构建需要 --push，将自动启用推送"
-        build_args="${build_args/--load/--push}"
     fi
 
     docker buildx build $build_args .
 
     info "CPU 版本构建完成: $tag"
 
-    # 导出为 tar.gz
-    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]]; then
-        export_image "$tag" "cpu"
+    # 如果使用了 --output 导出，压缩 tar 文件
+    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]] && [ "$PUSH" != "true" ]; then
+        local arch_suffix=""
+        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
+        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-cpu-${VERSION}-${arch_suffix}.tar"
+        if [ -f "$tar_file" ]; then
+            info "压缩: ${tar_file} → ${tar_file}.gz"
+            gzip -f "$tar_file"
+            local size=$(du -h "${tar_file}.gz" | cut -f1)
+            info "导出成功: ${tar_file}.gz ($size)"
+        fi
     fi
 }
 
@@ -276,56 +294,43 @@ build_gpu() {
 
     local build_args="--platform $PLATFORM -t $tag -f Dockerfile.gpu"
 
-    if [ "$PUSH" = "true" ]; then
+    # 多架构只能 push
+    if [[ "$PLATFORM" == *","* ]]; then
+        if [ "$PUSH" != "true" ]; then
+            warn "多架构构建需要 --push，将自动启用推送"
+        fi
         build_args="$build_args --push"
+    elif [ "$PUSH" = "true" ]; then
+        build_args="$build_args --push"
+    elif [ "$EXPORT_TAR" = "true" ]; then
+        # 直接通过 buildx 导出为 tar
+        local arch_suffix=""
+        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
+        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch_suffix}.tar"
+        mkdir -p "$EXPORT_DIR"
+        build_args="$build_args --output type=docker,dest=${tar_file}"
+        info "将直接导出到: ${tar_file}.gz"
     else
         build_args="$build_args --load"
-    fi
-
-    # 多架构只能 push，不能 load
-    if [[ "$PLATFORM" == *","* ]] && [ "$PUSH" != "true" ]; then
-        warn "多架构构建需要 --push，将自动启用推送"
-        build_args="${build_args/--load/--push}"
     fi
 
     docker buildx build $build_args .
 
     info "GPU 版本构建完成: $tag"
 
-    # 导出为 tar.gz
-    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]]; then
-        export_image "$tag" "gpu"
-    fi
-}
-
-# 导出镜像为 tar.gz
-export_image() {
-    local image_tag="$1"
-    local type="$2"
-
-    # 确保导出目录存在
-    mkdir -p "$EXPORT_DIR"
-
-    # 生成文件名
-    local arch_suffix=""
-    if [ "$PLATFORM" = "linux/amd64" ]; then
-        arch_suffix="amd64"
-    elif [ "$PLATFORM" = "linux/arm64" ]; then
-        arch_suffix="arm64"
-    fi
-
-    local filename="${IMAGE_NAME}-${type}-${VERSION}-${arch_suffix}.tar.gz"
-    local output_path="${EXPORT_DIR}/${filename}"
-
-    info "导出镜像: $image_tag → $output_path"
-
-    docker save "$image_tag" | gzip > "$output_path"
-
-    if [ $? -eq 0 ]; then
-        local size=$(du -h "$output_path" | cut -f1)
-        info "导出成功: $output_path ($size)"
-    else
-        error "导出失败: $image_tag"
+    # 如果使用了 --output 导出，压缩 tar 文件
+    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]] && [ "$PUSH" != "true" ]; then
+        local arch_suffix=""
+        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
+        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch_suffix}.tar"
+        if [ -f "$tar_file" ]; then
+            info "压缩: ${tar_file} → ${tar_file}.gz"
+            gzip -f "$tar_file"
+            local size=$(du -h "${tar_file}.gz" | cut -f1)
+            info "导出成功: ${tar_file}.gz ($size)"
+        fi
     fi
 }
 
@@ -431,8 +436,8 @@ main() {
 
     header "构建完成!"
 
-    # 显示构建的镜像
-    if [ "$PUSH" != "true" ] && [[ "$PLATFORM" != *","* ]]; then
+    # 显示构建的镜像（仅当加载到本地时）
+    if [ "$PUSH" != "true" ] && [ "$EXPORT_TAR" != "true" ] && [[ "$PLATFORM" != *","* ]]; then
         info "已构建的镜像:"
         docker images | grep "${REGISTRY}/${IMAGE_NAME}" | head -10
     fi
@@ -441,7 +446,10 @@ main() {
     if [ "$EXPORT_TAR" = "true" ]; then
         echo ""
         info "导出的镜像文件:"
-        ls -lh "${EXPORT_DIR}"/*.tar.gz 2>/dev/null | tail -5
+        ls -lh "${EXPORT_DIR}"/${IMAGE_NAME}*.tar.gz 2>/dev/null | tail -5
+        echo ""
+        info "使用以下命令加载镜像:"
+        echo "  gunzip -c <file>.tar.gz | docker load"
     fi
 }
 
