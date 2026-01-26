@@ -19,6 +19,8 @@ VERSION="latest"
 BUILD_TYPE=""
 PLATFORM=""
 PUSH="false"
+EXPORT_TAR="false"
+EXPORT_DIR="."
 INTERACTIVE="true"
 
 # 打印带颜色的消息
@@ -53,6 +55,8 @@ FunASR-API Docker 镜像构建脚本
     -a, --arch ARCH       架构: amd64, arm64, multi
     -v, --version VER     版本标签 (默认: latest)
     -p, --push            构建后推送到 Docker Hub
+    -e, --export          导出为 tar.gz 文件
+    -o, --output DIR      导出目录 (默认: 当前目录)
     -r, --registry REG    镜像仓库 (默认: quantatrisk)
     -y, --yes             跳过交互确认
     -h, --help            显示帮助
@@ -61,6 +65,7 @@ FunASR-API Docker 镜像构建脚本
     ./build.sh                          # 交互式构建
     ./build.sh -t gpu -a amd64          # 构建 GPU 版本 (amd64)
     ./build.sh -t all -a multi -p       # 构建所有版本多架构并推送
+    ./build.sh -t gpu -a amd64 -e       # 构建并导出为 tar.gz
 
 EOF
 }
@@ -124,19 +129,19 @@ simple_select() {
     shift
     local options=("$@")
 
-    echo -e "\n${BOLD}${prompt}${NC}"
+    echo -e "\n${BOLD}${prompt}${NC}" >&2
     for i in "${!options[@]}"; do
-        echo -e "  ${GREEN}$((i+1))${NC}) ${options[$i]}"
+        echo -e "  ${GREEN}$((i+1))${NC}) ${options[$i]}" >&2
     done
 
     while true; do
-        echo -ne "\n请输入选项 [1-${#options[@]}]: "
+        echo -ne "\n请输入选项 [1-${#options[@]}]: " >&2
         read -r choice
         if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
             echo $((choice - 1))
             return
         fi
-        echo -e "${RED}无效选项，请重新输入${NC}"
+        echo -e "${RED}无效选项，请重新输入${NC}" >&2
     done
 }
 
@@ -145,7 +150,7 @@ interactive_config() {
     show_banner
 
     # 选择构建类型
-    header "步骤 1/4: 选择构建类型"
+    header "步骤 1/5: 选择构建类型"
     local types=("GPU 版本 (推荐生产环境)" "CPU 版本 (无 GPU 环境)" "全部构建 (GPU + CPU)")
     local type_idx=$(simple_select "选择要构建的镜像类型:" "${types[@]}")
     case $type_idx in
@@ -155,7 +160,7 @@ interactive_config() {
     esac
 
     # 选择架构
-    header "步骤 2/4: 选择目标架构"
+    header "步骤 2/5: 选择目标架构"
     local archs=("amd64 (x86_64, 常见服务器/PC)" "arm64 (Apple Silicon, ARM 服务器)" "多架构 (amd64 + arm64)")
     local arch_idx=$(simple_select "选择目标架构:" "${archs[@]}")
     case $arch_idx in
@@ -165,16 +170,32 @@ interactive_config() {
     esac
 
     # 输入版本号
-    header "步骤 3/4: 设置版本标签"
+    header "步骤 3/5: 设置版本标签"
     echo -ne "请输入版本标签 [默认: latest]: "
     read -r input_version
     [ -n "$input_version" ] && VERSION="$input_version"
 
     # 是否推送
-    header "步骤 4/4: 推送设置"
+    header "步骤 4/5: 推送设置"
     local push_opts=("仅本地构建 (不推送)" "构建并推送到 Docker Hub")
     local push_idx=$(simple_select "选择推送选项:" "${push_opts[@]}")
     [ $push_idx -eq 1 ] && PUSH="true"
+
+    # 是否导出为 tar.gz
+    header "步骤 5/5: 导出设置"
+    if [[ "$PLATFORM" == *","* ]]; then
+        echo -e "${YELLOW}注意: 多架构构建不支持导出为 tar.gz${NC}"
+        EXPORT_TAR="false"
+    else
+        local export_opts=("不导出" "导出为 tar.gz 文件")
+        local export_idx=$(simple_select "是否导出镜像为 tar.gz:" "${export_opts[@]}")
+        if [ $export_idx -eq 1 ]; then
+            EXPORT_TAR="true"
+            echo -ne "请输入导出目录 [默认: 当前目录]: "
+            read -r input_dir
+            [ -n "$input_dir" ] && EXPORT_DIR="$input_dir"
+        fi
+    fi
 
     # 确认配置
     header "配置确认"
@@ -183,6 +204,7 @@ interactive_config() {
     echo -e "  版本标签:   ${CYAN}${VERSION}${NC}"
     echo -e "  镜像仓库:   ${CYAN}${REGISTRY}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
+    echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
 
     echo ""
     echo -ne "确认开始构建? [Y/n]: "
@@ -238,6 +260,11 @@ build_cpu() {
     docker buildx build $build_args .
 
     info "CPU 版本构建完成: $tag"
+
+    # 导出为 tar.gz
+    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]]; then
+        export_image "$tag" "cpu"
+    fi
 }
 
 # 构建 GPU 版本
@@ -264,6 +291,42 @@ build_gpu() {
     docker buildx build $build_args .
 
     info "GPU 版本构建完成: $tag"
+
+    # 导出为 tar.gz
+    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]]; then
+        export_image "$tag" "gpu"
+    fi
+}
+
+# 导出镜像为 tar.gz
+export_image() {
+    local image_tag="$1"
+    local type="$2"
+
+    # 确保导出目录存在
+    mkdir -p "$EXPORT_DIR"
+
+    # 生成文件名
+    local arch_suffix=""
+    if [ "$PLATFORM" = "linux/amd64" ]; then
+        arch_suffix="amd64"
+    elif [ "$PLATFORM" = "linux/arm64" ]; then
+        arch_suffix="arm64"
+    fi
+
+    local filename="${IMAGE_NAME}-${type}-${VERSION}-${arch_suffix}.tar.gz"
+    local output_path="${EXPORT_DIR}/${filename}"
+
+    info "导出镜像: $image_tag → $output_path"
+
+    docker save "$image_tag" | gzip > "$output_path"
+
+    if [ $? -eq 0 ]; then
+        local size=$(du -h "$output_path" | cut -f1)
+        info "导出成功: $output_path ($size)"
+    else
+        error "导出失败: $image_tag"
+    fi
 }
 
 # 解析参数
@@ -291,6 +354,14 @@ parse_args() {
             -p|--push)
                 PUSH="true"
                 shift
+                ;;
+            -e|--export)
+                EXPORT_TAR="true"
+                shift
+                ;;
+            -o|--output)
+                EXPORT_DIR="$2"
+                shift 2
                 ;;
             -r|--registry)
                 REGISTRY="$2"
@@ -324,6 +395,12 @@ main() {
     [ -z "$BUILD_TYPE" ] && error "请指定构建类型 (-t cpu|gpu|all)"
     [ -z "$PLATFORM" ] && PLATFORM="linux/amd64"  # 默认 amd64
 
+    # 多架构不支持导出
+    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" == *","* ]]; then
+        warn "多架构构建不支持导出为 tar.gz，已禁用导出"
+        EXPORT_TAR="false"
+    fi
+
     # 检查 buildx
     check_buildx
 
@@ -332,6 +409,7 @@ main() {
     echo -e "  目标架构:   ${CYAN}${PLATFORM}${NC}"
     echo -e "  版本标签:   ${CYAN}${VERSION}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
+    echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
     echo ""
 
     # 执行构建
@@ -357,6 +435,13 @@ main() {
     if [ "$PUSH" != "true" ] && [[ "$PLATFORM" != *","* ]]; then
         info "已构建的镜像:"
         docker images | grep "${REGISTRY}/${IMAGE_NAME}" | head -10
+    fi
+
+    # 显示导出的文件
+    if [ "$EXPORT_TAR" = "true" ]; then
+        echo ""
+        info "导出的镜像文件:"
+        ls -lh "${EXPORT_DIR}"/*.tar.gz 2>/dev/null | tail -5
     fi
 }
 
