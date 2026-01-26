@@ -105,18 +105,7 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 """,
     openapi_extra={
         "parameters": [
-            {
-                "name": "appkey",
-                "in": "query",
-                "required": False,
-                "schema": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "example": "default",
-                },
-                "description": "应用 Appkey，用于 API 调用认证。未配置 APPKEY 环境变量时可忽略",
-            },
+            # 1. 核心参数
             {
                 "name": "model_id",
                 "in": "query",
@@ -130,6 +119,19 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                 },
                 "description": "ASR 模型 ID。可选值：paraformer-large（默认）、fun-asr-nano（多语言+方言）",
             },
+            # 2. 输入源
+            {
+                "name": "audio_address",
+                "in": "query",
+                "required": False,
+                "schema": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "example": "",
+                },
+                "description": "音频文件 URL（HTTP/HTTPS）。指定此参数时，将从 URL 下载音频而非读取请求体",
+            },
+            # 3. 音频属性
             {
                 "name": "sample_rate",
                 "in": "query",
@@ -142,6 +144,19 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                 },
                 "description": "音频采样率（Hz），实际识别时会自动转换为 16kHz。支持：8000, 16000, 22050, 24000",
             },
+            # 4. 功能开关
+            {
+                "name": "enable_speaker_diarization",
+                "in": "query",
+                "required": False,
+                "schema": {
+                    "type": "boolean",
+                    "default": True,
+                    "example": True,
+                },
+                "description": "是否启用说话人分离。启用后响应会包含 speaker_id 字段",
+            },
+            # 5. 增强选项
             {
                 "name": "vocabulary_id",
                 "in": "query",
@@ -153,16 +168,18 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                 },
                 "description": "热词字符串，格式：`热词1 权重1 热词2 权重2`。权重范围 1-100，建议 10-30。可提升特定词汇的识别准确率",
             },
+            # 6. 认证参数
             {
-                "name": "audio_address",
+                "name": "appkey",
                 "in": "query",
                 "required": False,
                 "schema": {
                     "type": "string",
-                    "maxLength": 512,
-                    "example": "",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "example": "default",
                 },
-                "description": "音频文件 URL（HTTP/HTTPS）。指定此参数时，将从 URL 下载音频而非读取请求体",
+                "description": "应用 Appkey，用于 API 调用认证。未配置 APPKEY 环境变量时可忽略",
             },
             {
                 "name": "X-NLS-Token",
@@ -281,7 +298,7 @@ async def asr_transcribe(
         # 使用线程池执行模型推理，避免阻塞事件循环
         # 使用长音频识别方法，自动处理超过60秒的音频
         # 默认开启：标点预测、ITN（数字转换）
-        logger.info(f"[{task_id}] 开始调用 transcribe_long_audio...")
+        logger.info(f"[{task_id}] 开始调用 transcribe_long_audio (enable_speaker_diarization={params.enable_speaker_diarization})...")
         sys.stdout.flush()
 
         asr_result = await run_sync(
@@ -291,25 +308,28 @@ async def asr_transcribe(
             enable_punctuation=True,  # 默认开启标点预测
             enable_itn=True,  # 默认开启数字转换
             sample_rate=params.sample_rate,
+            enable_speaker_diarization=params.enable_speaker_diarization if params.enable_speaker_diarization is not None else True,
         )
 
         logger.info(f"[{task_id}] 识别完成，共 {len(asr_result.segments)} 个分段，总字符: {len(asr_result.text)}")
 
         # 构建分段结果（始终返回 segments，短音频也是 1 个 segment）
-        segments_data = [
-            {
+        segments_data = []
+        for seg in asr_result.segments:
+            seg_dict = {
                 "text": seg.text,
                 "start_time": round(seg.start_time, 2),
                 "end_time": round(seg.end_time, 2),
             }
-            for seg in asr_result.segments
-        ]
+            if seg.speaker_id:
+                seg_dict["speaker_id"] = seg.speaker_id
+            segments_data.append(seg_dict)
 
         # 返回成功响应（统一数据结构）
         response_data = {
             "task_id": task_id,
             "result": asr_result.text,
-            "status": 20000000,
+            "status": 200,
             "message": "SUCCESS",
             "segments": segments_data,
             "duration": round(asr_result.duration, 2),

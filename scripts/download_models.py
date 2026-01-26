@@ -53,13 +53,20 @@ def download_models():
 
     # 所有需要下载的模型列表 (ModelScope)
     models = [
+        # === 1. 核心 ASR 模型 ===
         # Paraformer Large (默认模型) - 一体化版本，内置VAD+标点+时间戳
         ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large Offline (VAD+PUNC)"),
         ("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online", "Paraformer Large Online/Realtime"),
         # Fun-ASR-Nano - 轻量级多语言ASR，支持31种语言和中文方言
         ("FunAudioLLM/Fun-ASR-Nano-2512", "Fun-ASR-Nano (多语言+方言)"),
-        # VAD 模型
+
+        # === 2. 音频预处理模型 ===
+        # VAD 模型 - 语音活动检测
         ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD Model"),
+        # 说话人分离模型 (CAM++) - 多说话人场景
+        ("iic/speech_campplus_speaker-diarization_common", "Speaker Diarization Model (CAM++)"),
+
+        # === 3. 后处理模型 ===
         # 标点模型
         ("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", "Punctuation Model"),
         ("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727", "Realtime Punctuation Model"),

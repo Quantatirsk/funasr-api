@@ -21,34 +21,45 @@ from .common import (
 class ASRQueryParams(BaseModel):
     """ASR接口查询参数模型"""
 
-    appkey: Optional[str] = Field(
-        default=None,
-        description="应用Appkey，用于API调用认证",
-        min_length=1,
-        max_length=64,
-    )
-
+    # 1. 核心参数
     model_id: Optional[str] = Field(
         default=None,
         description="ASR模型ID，不指定则使用默认模型(paraformer-large)",
         max_length=64,
     )
 
+    # 2. 输入源
+    audio_address: Optional[str] = Field(
+        default=None,
+        description="音频文件下载链接（HTTP/HTTPS），格式自动识别",
+        max_length=512,
+    )
+
+    # 3. 音频属性
     sample_rate: Optional[SampleRate] = Field(
         default=SampleRate.RATE_16000,
         description=f"音频采样率（Hz）。支持: {', '.join(map(str, SampleRate.get_enums()))}",
     )
 
+    # 4. 功能开关
+    enable_speaker_diarization: Optional[bool] = Field(
+        default=True,
+        description="是否启用说话人分离。启用后响应会包含 speaker_id",
+    )
+
+    # 5. 增强选项
     vocabulary_id: Optional[str] = Field(
         default=None,
         description="热词字符串，格式：热词1 权重1 热词2 权重2（如：阿里巴巴 20 腾讯 15）",
         max_length=512,
     )
 
-    audio_address: Optional[str] = Field(
+    # 6. 认证参数
+    appkey: Optional[str] = Field(
         default=None,
-        description="音频文件下载链接（HTTP/HTTPS），格式自动识别",
-        max_length=512,
+        description="应用Appkey，用于API调用认证",
+        min_length=1,
+        max_length=64,
     )
 
 
@@ -70,6 +81,10 @@ class ASRSegment(BaseModel):
         ...,
         description="段落结束时间（秒）",
     )
+    speaker_id: Optional[str] = Field(
+        default=None,
+        description="说话人ID（如 说话人1），仅启用说话人分离时返回",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -77,6 +92,7 @@ class ASRSegment(BaseModel):
                 "text": "今天天气不错。",
                 "start_time": 0.0,
                 "end_time": 2.5,
+                "speaker_id": "说话人1",
             }
         }
     }
@@ -107,11 +123,11 @@ class ASRSuccessResponse(BaseResponse):
                 "task_id": "cf7b0c5339244ee29cd4e43fb97f1234",
                 "result": "今天天气不错。明天可能会下雨。",
                 "segments": [
-                    {"text": "今天天气不错。", "start_time": 0.0, "end_time": 2.5},
-                    {"text": "明天可能会下雨。", "start_time": 3.2, "end_time": 5.8},
+                    {"text": "今天天气不错。", "start_time": 0.0, "end_time": 2.5, "speaker_id": "说话人1"},
+                    {"text": "明天可能会下雨。", "start_time": 3.2, "end_time": 5.8, "speaker_id": "说话人2"},
                 ],
                 "duration": 5.8,
-                "status": 20000000,
+                "status": 200,
                 "message": "SUCCESS",
             }
         }

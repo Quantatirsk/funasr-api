@@ -54,6 +54,7 @@ class TranscriptionSegment(BaseModel):
     avg_logprob: float = 0.0
     compression_ratio: float = 0.0
     no_speech_prob: float = 0.0
+    speaker: Optional[str] = Field(default=None, description="说话人ID")
 
 
 class TranscriptionWord(BaseModel):
@@ -120,7 +121,10 @@ def generate_srt(segments: List[TranscriptionSegment]) -> str:
         end = format_timestamp_srt(seg.end)
         lines.append(f"{i}")
         lines.append(f"{start} --> {end}")
-        lines.append(seg.text.strip())
+        text = seg.text.strip()
+        if seg.speaker:
+            text = f"[{seg.speaker}] {text}"
+        lines.append(text)
         lines.append("")
     return "\n".join(lines)
 
@@ -132,7 +136,10 @@ def generate_vtt(segments: List[TranscriptionSegment]) -> str:
         start = format_timestamp_vtt(seg.start)
         end = format_timestamp_vtt(seg.end)
         lines.append(f"{start} --> {end}")
-        lines.append(seg.text.strip())
+        text = seg.text.strip()
+        if seg.speaker:
+            text = f"[{seg.speaker}] {text}"
+        lines.append(text)
         lines.append("")
     return "\n".join(lines)
 
@@ -203,12 +210,17 @@ async def list_models(request: Request):
 - 最大支持 2048MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
 - OpenAI 原生限制为 25MB
 
+**说话人分离：**
+- 默认开启 (`enable_speaker_diarization=true`)
+- 启用后 `verbose_json` 格式的 segments 会包含 `speaker` 字段（如 "说话人1"）
+- 可设置 `enable_speaker_diarization=false` 关闭
+
 **输出格式：**
 | 格式 | Content-Type | 说明 |
 |------|-------------|------|
 | `json` | application/json | 简单 JSON，仅含 text 字段（默认） |
 | `text` | text/plain | 纯文本 |
-| `verbose_json` | application/json | 详细 JSON，含时间戳和分段 |
+| `verbose_json` | application/json | 详细 JSON，含时间戳、分段和说话人 |
 | `srt` | text/plain | SRT 字幕格式 |
 | `vtt` | text/vtt | WebVTT 字幕格式 |
 
@@ -252,26 +264,36 @@ async def list_models(request: Request):
 )
 async def create_transcription(
     request: Request,
+    # 1. 必需参数 - 输入
     file: UploadFile = File(
         ...,
         description="要转写的音频文件，支持 mp3/wav/flac/ogg/m4a/amr/pcm 等格式"
     ),
+    # 2. 核心参数
     model: str = Form(
         "paraformer-large",
         description="ASR 模型选择",
         json_schema_extra={"enum": ["paraformer-large", "fun-asr-nano"]},
     ),
+    # 3. 音频属性
     language: Optional[str] = Form(
         None,
         description="音频语言代码（ISO-639-1），如 zh/en/ja，不填则自动检测",
         examples=["zh", "en", "ja"],
     ),
-    prompt: Optional[str] = Form(None, description="提示文本（暂不支持，保留兼容）"),  # noqa: ARG001
+    # 4. 功能开关
+    enable_speaker_diarization: bool = Form(
+        True,
+        description="是否启用说话人分离（默认开启）。启用后响应 segments 会包含 speaker 字段"
+    ),
+    # 5. 输出选项
     response_format: ResponseFormat = Form(
         ResponseFormat.JSON,
         description="输出格式",
         examples=["json", "text", "verbose_json", "srt", "vtt"],
     ),
+    # 6. 兼容性参数（暂不支持）
+    prompt: Optional[str] = Form(None, description="提示文本（暂不支持，保留兼容）"),  # noqa: ARG001
     temperature: Optional[float] = Form(0, description="采样温度（暂不支持，保留兼容）"),  # noqa: ARG001
     timestamp_granularities: Optional[List[str]] = Form(  # noqa: ARG001
         None,
@@ -286,7 +308,7 @@ async def create_transcription(
     audio_path = None
     normalized_audio_path = None
 
-    logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}")
+    logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}, speaker_diarization={enable_speaker_diarization}")
 
     try:
         # 可选鉴权 (支持 Bearer Token)
@@ -348,6 +370,7 @@ async def create_transcription(
             enable_punctuation=True,
             enable_itn=True,
             sample_rate=16000,
+            enable_speaker_diarization=enable_speaker_diarization,
         )
 
         logger.info(f"[OpenAI API] 识别完成: {len(asr_result.text)} 字符")
@@ -361,6 +384,7 @@ async def create_transcription(
                 start=seg.start_time,
                 end=seg.end_time,
                 text=seg.text,
+                speaker=seg.speaker_id,
             ))
 
         # 检测语言 (简单实现)

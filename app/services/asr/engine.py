@@ -52,6 +52,7 @@ class ASRSegmentResult:
     text: str  # 该段识别文本
     start_time: float  # 开始时间（秒）
     end_time: float  # 结束时间（秒）
+    speaker_id: Optional[str] = None  # 说话人ID（多说话人模式）
 
 
 @dataclass
@@ -147,6 +148,7 @@ class BaseASREngine(ABC):
         enable_itn: bool = False,
         sample_rate: int = 16000,
         max_segment_sec: float = 55.0,
+        enable_speaker_diarization: bool = True,
     ) -> ASRFullResult:
         """转录长音频文件（自动分段）
 
@@ -157,23 +159,22 @@ class BaseASREngine(ABC):
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
             max_segment_sec: 每段最大时长（秒）
+            enable_speaker_diarization: 是否启用说话人分离
 
         Returns:
             ASRFullResult: 包含完整文本、分段结果和时长的结果
         """
         from ...utils.audio_splitter import AudioSplitter
 
-        logger.info(f"[transcribe_long_audio] 方法被调用，音频: {audio_path}")
+        logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}")
 
         try:
             # 获取音频时长
-            logger.info("[transcribe_long_audio] 正在获取音频时长...")
             duration = get_audio_duration(audio_path)
             logger.info(f"[transcribe_long_audio] 音频时长: {duration:.2f}秒")
 
-            # 检查是否需要分段
-            if duration <= self.MAX_AUDIO_DURATION_SEC:
-                # 短音频，使用 VAD 获取分段信息
+            # 短音频且不启用说话人分离：直接使用 VAD 识别
+            if duration <= self.MAX_AUDIO_DURATION_SEC and not enable_speaker_diarization:
                 raw_result = self.transcribe_file_with_vad(
                     audio_path=audio_path,
                     hotwords=hotwords,
@@ -182,7 +183,6 @@ class BaseASREngine(ABC):
                     sample_rate=sample_rate,
                 )
 
-                # 如果没有分段信息，创建一个完整的分段
                 segments = raw_result.segments
                 if not segments:
                     segments = [
@@ -199,38 +199,61 @@ class BaseASREngine(ABC):
                     duration=duration,
                 )
 
-            # 长音频，需要分段
-            splitter = AudioSplitter(
-                max_segment_sec=max_segment_sec, device=self.device
-            )
-            segments = splitter.split_audio_file(audio_path)
+            # 长音频或多说话人：需要分段
+            speaker_segments = None
+            audio_segments = None
 
-            logger.info(f"音频已分割为 {len(segments)} 段")
+            if enable_speaker_diarization:
+                # 多说话人：使用说话人分离
+                from ...utils.speaker_diarizer import SpeakerDiarizer
 
-            # 逐段识别，使用 try-finally 确保临时文件被清理
+                logger.info("使用说话人分离模式")
+                diarizer = SpeakerDiarizer(max_segment_sec=max_segment_sec)
+                speaker_segments = diarizer.split_audio_by_speakers(audio_path)
+
+                if not speaker_segments:
+                    logger.warning("说话人分离未检测到片段，fallback 到 VAD 分割")
+
+            if not speaker_segments:
+                # 单说话人：使用 VAD 分割
+                logger.info("使用 VAD 分割模式")
+                splitter = AudioSplitter(
+                    max_segment_sec=max_segment_sec, device=self.device
+                )
+                audio_segments = splitter.split_audio_file(audio_path)
+
+            # 选择要处理的片段
+            segments_to_process = speaker_segments if speaker_segments else audio_segments
+            if not segments_to_process:
+                raise DefaultServerErrorException("音频分割失败：未生成任何片段")
+
+            logger.info(f"音频已分割为 {len(segments_to_process)} 段")
+
+            # 逐段识别
             results: List[ASRSegmentResult] = []
             all_texts: List[str] = []
 
             try:
-                for idx, segment in enumerate(segments):
+                for idx, segment in enumerate(segments_to_process):
+                    speaker_id = getattr(segment, 'speaker_id', None)
+                    speaker_info = f" [{speaker_id}]" if speaker_id else ""
+
                     logger.info(
-                        f"识别分段 {idx + 1}/{len(segments)}: "
-                        f"{segment.start_sec:.2f}s - {segment.end_sec:.2f}s"
+                        f"识别分段 {idx + 1}/{len(segments_to_process)}: "
+                        f"{segment.start_sec:.2f}s - {segment.end_sec:.2f}s{speaker_info}"
                     )
 
                     try:
-                        # 确保临时文件存在
                         if not segment.temp_file:
                             logger.warning(f"分段 {idx + 1} 临时文件不存在，跳过")
                             continue
 
-                        # 识别该段
                         segment_text = self.transcribe_file(
                             audio_path=segment.temp_file,
                             hotwords=hotwords,
                             enable_punctuation=enable_punctuation,
                             enable_itn=enable_itn,
-                            enable_vad=False,  # 分段后不再需要 VAD
+                            enable_vad=False,
                             sample_rate=sample_rate,
                         )
 
@@ -240,19 +263,22 @@ class BaseASREngine(ABC):
                                     text=segment_text,
                                     start_time=segment.start_sec,
                                     end_time=segment.end_sec,
+                                    speaker_id=speaker_id,
                                 )
                             )
                             all_texts.append(segment_text)
-                            logger.debug(f"分段 {idx + 1} 识别结果: {segment_text[:50]}...")
 
                     except Exception as e:
                         logger.error(f"分段 {idx + 1} 识别失败: {e}")
-                        # 继续处理下一段
-            finally:
-                # 确保临时文件被清理，即使发生异常
-                AudioSplitter.cleanup_segments(segments)
 
-            # 合并结果
+            finally:
+                # 清理临时文件
+                if enable_speaker_diarization and speaker_segments:
+                    from ...utils.speaker_diarizer import SpeakerDiarizer
+                    SpeakerDiarizer.cleanup_segments(speaker_segments)
+                elif audio_segments:
+                    AudioSplitter.cleanup_segments(audio_segments)
+
             full_text = "".join(all_texts)
 
             logger.info(
