@@ -54,6 +54,60 @@ curl -X POST "http://localhost:8000/stream/v1/asr" \
   --data-binary @test.wav
 ```
 
+## 从源码构建镜像
+
+### 使用构建脚本
+
+项目提供了 `build.sh` 脚本简化构建流程：
+
+```bash
+# 构建所有版本（CPU + GPU）
+./build.sh
+
+# 仅构建 GPU 版本
+./build.sh -t gpu
+
+# 构建指定版本并推送
+./build.sh -t all -v 1.0.0 -p
+
+# 查看帮助
+./build.sh -h
+```
+
+**构建脚本参数：**
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-t, --type` | 构建类型: `cpu`, `gpu`, `all` | `all` |
+| `-v, --version` | 版本标签 | `latest` |
+| `-p, --push` | 构建后推送到 Docker Hub | 否 |
+| `-r, --registry` | 镜像仓库 | `quantatrisk` |
+
+### 手动构建
+
+```bash
+# 构建 CPU 版本
+docker build -t funasr-api:latest -f Dockerfile .
+
+# 构建 GPU 版本
+docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
+```
+
+### 预下载的模型
+
+构建时会自动下载以下模型：
+
+| 模型 | 说明 |
+|------|------|
+| Paraformer Large (VAD+PUNC) | 高精度中文 ASR（默认） |
+| Paraformer Large Online | 实时流式 ASR |
+| Fun-ASR-Nano | 多语言+方言 ASR |
+| VAD Model | 语音活动检测 |
+| CAM++ | 说话人分离 |
+| Punctuation Model | 标点预测（离线） |
+| Punctuation Model (Realtime) | 标点预测（实时） |
+| Language Model | N-gram 语言模型 |
+
 ## 环境变量配置
 
 ### 服务器配置
@@ -63,12 +117,15 @@ curl -X POST "http://localhost:8000/stream/v1/asr" \
 | `HOST` | `0.0.0.0` | 服务绑定地址 |
 | `PORT` | `8000` | 服务端口 |
 | `DEBUG` | `false` | 调试模式（启用后可访问 /docs） |
+| `WORKERS` | `1` | 工作进程数（多进程会复制模型，显存成倍增加） |
+| `INFERENCE_THREAD_POOL_SIZE` | `4` | 推理线程池大小 |
 
 ### 设备配置
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `DEVICE` | `auto` | 设备选择：`auto`, `cpu`, `cuda:0` |
+| `NVIDIA_VISIBLE_DEVICES` | - | 可见的 GPU 设备 |
 
 ### ASR 模型配置
 
@@ -126,7 +183,7 @@ curl -H "Authorization: Bearer your_token" http://localhost:8000/v1/models
 
 ## Docker Compose 配置
 
-完整的 `docker-compose.yml` 示例：
+### 基础配置
 
 ```yaml
 services:
@@ -143,8 +200,6 @@ services:
       - LOG_LEVEL=INFO
       - DEVICE=auto
       - ASR_MODEL_MODE=all
-      - AUTO_LOAD_CUSTOM_ASR_MODELS=fun-asr-nano
-      # - APPTOKEN=your_secret_token
     restart: unless-stopped
     deploy:
       resources:
@@ -153,6 +208,55 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+```
+
+### 生产环境配置（带 Nginx）
+
+```yaml
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: funasr-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./funasr.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - funasr-api
+    restart: unless-stopped
+    networks:
+      - funasr-net
+
+  funasr-api:
+    image: quantatrisk/funasr-api:gpu-latest
+    container_name: funasr-api
+    expose:
+      - "8000"
+    volumes:
+      - ./temp:/app/temp
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - DEVICE=cuda:0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - WORKERS=1
+      - INFERENCE_THREAD_POOL_SIZE=4
+    restart: unless-stopped
+    networks:
+      - funasr-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+
+networks:
+  funasr-net:
+    name: funasr-net
 ```
 
 ## 服务监控
@@ -195,8 +299,8 @@ docker exec -it funasr-api nvidia-smi
 
 - CPU: 8 核
 - 内存: 16GB
-- GPU: NVIDIA GPU (4GB+ 显存)
-- 磁盘: 20GB
+- GPU: NVIDIA GPU (6GB+ 显存，含说话人分离模型)
+- 磁盘: 25GB
 
 ## 故障排除
 
@@ -207,6 +311,7 @@ docker exec -it funasr-api nvidia-smi
 | GPU 内存不足 | CUDA OOM 错误 | 设置 `DEVICE=cpu` 或使用更大显存的 GPU |
 | 模型加载慢 | 首次启动超时 | 模型会自动下载，首次需要等待 |
 | 端口被占用 | 端口冲突错误 | 修改端口映射：`"8080:8000"` |
+| 说话人分离失败 | CAM++ 模型错误 | 检查模型是否完整下载，显存是否充足 |
 
 ### 调试模式
 
