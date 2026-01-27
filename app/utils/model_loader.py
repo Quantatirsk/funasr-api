@@ -56,6 +56,7 @@ def print_model_statistics(result: dict, use_logger: bool = True):
         "vad_model": "VAD模型",
         "punc_model": "标点符号模型(离线)",
         "punc_realtime_model": "标点符号模型(实时)",
+        "speaker_diarization_model": "说话人分离模型(CAM++)",
     }
 
     for key, name in other_models.items():
@@ -111,6 +112,7 @@ def preload_models() -> dict:
         "vad_model": {"loaded": False, "error": None},
         "punc_model": {"loaded": False, "error": None},
         "punc_realtime_model": {"loaded": False, "error": None},
+        "speaker_diarization_model": {"loaded": False, "error": None},
     }
 
     from ..core.config import settings
@@ -268,6 +270,24 @@ def preload_models() -> dict:
             logger.error(f"❌ 实时标点符号模型加载失败: {e}")
     else:
         logger.info("⏭️  跳过实时标点符号模型加载 (ASR_ENABLE_REALTIME_PUNC=False)")
+
+    # 6. 预加载说话人分离模型 (CAM++)
+    try:
+        logger.info("📥 正在加载说话人分离模型(CAM++)...")
+        from ..utils.speaker_diarizer import get_global_diarization_pipeline
+
+        diarization_pipeline = get_global_diarization_pipeline()
+
+        if diarization_pipeline:
+            result["speaker_diarization_model"]["loaded"] = True
+            logger.info("✅ 说话人分离模型(CAM++)加载成功")
+        else:
+            result["speaker_diarization_model"]["error"] = "说话人分离模型加载后返回None"
+            logger.warning("⚠️  说话人分离模型(CAM++)加载后返回None")
+
+    except Exception as e:
+        result["speaker_diarization_model"]["error"] = str(e)
+        logger.error(f"❌ 说话人分离模型(CAM++)加载失败: {e}")
 
     # 打印统计结果到日志
     print_model_statistics(result, use_logger=True)
