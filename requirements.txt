@@ -19,3 +19,4 @@ torchaudio
 wetext==0.1.2
 python-dotenv==1.2.1
 transformers==4.51.0
+hdbscan==0.8.40
