@@ -11,7 +11,7 @@ import soundfile as sf
 import tempfile
 import os
 import threading
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 from ..core.config import settings
@@ -192,6 +192,9 @@ class SpeakerDiarizer:
         result = []
         splitter = AudioSplitter(max_segment_sec=self.max_segment_sec / 1000)
 
+        # 只获取一次VAD（优化：避免重复调用）
+        all_vad_segments = None
+
         for seg in segments:
             if seg.duration_ms <= self.max_segment_ms:
                 result.append(seg)
@@ -200,31 +203,24 @@ class SpeakerDiarizer:
                 logger.info(f"说话人 {seg.speaker_id} 片段 {seg.start_ms}ms-{seg.end_ms}ms 超长，使用VAD切分")
 
                 try:
-                    # 提取该段音频的 VAD 边界
-                    vad_segments = splitter.get_vad_segments(audio_path)
+                    # 延迟获取VAD（只在需要时获取）
+                    if all_vad_segments is None:
+                        all_vad_segments = splitter.get_vad_segments(audio_path)
 
-                    # 过滤出与该段有交集的 VAD 段
-                    # 条件：两个时间段有重叠（不是完全分离）
+                    # 过滤出完全在该段范围内的 VAD 段
+                    # 关键修改：只使用完全包含在说话人片段内的 VAD 边界
                     seg_vad_segments = [
-                        (start, end) for start, end in vad_segments
-                        if not (end <= seg.start_ms or start >= seg.end_ms)  # 不是完全在范围外
+                        (max(start, seg.start_ms), min(end, seg.end_ms))
+                        for start, end in all_vad_segments
+                        if start < seg.end_ms and end > seg.start_ms  # 有交集
                     ]
 
                     if seg_vad_segments:
-                        # 使用贪婪合并算法
-                        merged_vad = splitter.merge_segments_greedy(seg_vad_segments, seg.end_ms)
-
-                        # 限制每段在有效范围内
-                        for start_ms, end_ms in merged_vad:
-                            actual_start = max(start_ms, seg.start_ms)
-                            actual_end = min(end_ms, seg.end_ms)
-
-                            if actual_end - actual_start >= self.min_segment_ms:
-                                result.append(SpeakerSegment(
-                                    start_ms=actual_start,
-                                    end_ms=actual_end,
-                                    speaker_id=seg.speaker_id,
-                                ))
+                        # 直接使用 VAD 边界，贪婪合并确保不超过最大时长
+                        sub_segments = self._merge_vad_for_speaker(
+                            seg_vad_segments, seg.start_ms, seg.end_ms, seg.speaker_id
+                        )
+                        result.extend(sub_segments)
                     else:
                         # VAD 未检测到语音，fallback 到硬切
                         logger.warning(f"VAD 未检测到语音边界，fallback 到硬切")
@@ -239,6 +235,69 @@ class SpeakerDiarizer:
             logger.info(f"切分超长片段: {len(segments)} → {len(result)} (+{split_count})")
 
         return result
+
+    def _merge_vad_for_speaker(
+        self,
+        vad_segments: List[Tuple[int, int]],
+        speaker_start: int,
+        speaker_end: int,
+        speaker_id: str
+    ) -> List[SpeakerSegment]:
+        """为单个说话人合并VAD段，确保每段不超过最大时长
+
+        与 AudioSplitter.merge_segments_greedy 不同，这里：
+        1. 不假设从0开始
+        2. 只处理已过滤的 VAD 段
+        3. 确保结果连续无间隙
+        """
+        if not vad_segments:
+            return []
+
+        # 按开始时间排序
+        sorted_vad = sorted(vad_segments, key=lambda x: x[0])
+
+        merged = []
+        current_start = sorted_vad[0][0]
+        current_end = sorted_vad[0][1]
+
+        for vad_start, vad_end in sorted_vad[1:]:
+            # 检查合并后是否超过最大时长
+            if vad_end - current_start <= self.max_segment_ms:
+                # 可以合并，扩展当前段
+                current_end = vad_end
+            else:
+                # 超过限制，保存当前段，开始新段
+                if current_end - current_start >= self.min_segment_ms:
+                    merged.append(SpeakerSegment(
+                        start_ms=current_start,
+                        end_ms=current_end,
+                        speaker_id=speaker_id,
+                    ))
+                current_start = vad_start
+                current_end = vad_end
+
+        # 保存最后一段
+        if current_end - current_start >= self.min_segment_ms:
+            merged.append(SpeakerSegment(
+                start_ms=current_start,
+                end_ms=current_end,
+                speaker_id=speaker_id,
+            ))
+
+        # 使用 speaker_start 和 speaker_end 限制结果边界
+        # 确保所有段都在说话人片段范围内
+        final_merged = []
+        for seg in merged:
+            actual_start = max(seg.start_ms, speaker_start)
+            actual_end = min(seg.end_ms, speaker_end)
+            if actual_end - actual_start >= self.min_segment_ms:
+                final_merged.append(SpeakerSegment(
+                    start_ms=actual_start,
+                    end_ms=actual_end,
+                    speaker_id=speaker_id,
+                ))
+
+        return final_merged
 
     def _hard_split_segment(self, seg: SpeakerSegment, result: List[SpeakerSegment]) -> None:
         """硬性切分（fallback）"""
