@@ -172,10 +172,25 @@ def download_models():
             print(" (使用默认版本)")
 
         try:
+            # 只下载模型权重文件，排除文档和图片
+            allow_patterns = [
+                "*.bin", "*.pt", "*.pth", "*.safetensors",  # 权重文件
+                "*.json", "*.yaml", "*.yml", "*.txt",        # 配置文件
+                "*.model", "*.vocab", "*.dict", "*.pb",      # 模型相关
+                "am.mvn", "cmvn", "configuration", "*.onnx",
+            ]
+
             if revision:
-                path = snapshot_download(model_id, revision=revision)
+                path = snapshot_download(
+                    model_id,
+                    revision=revision,
+                    allow_patterns=allow_patterns
+                )
             else:
-                path = snapshot_download(model_id)
+                path = snapshot_download(
+                    model_id,
+                    allow_patterns=allow_patterns
+                )
             print(f"    ✅ 下载完成: {path}")
             downloaded.append(model_id)
 
