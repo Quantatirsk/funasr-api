@@ -23,14 +23,15 @@ if "MODELSCOPE_CACHE" not in os.environ:
 def get_model_revisions():
     """从配置获取模型版本信息"""
     # 直接定义版本，与 app/core/config.py 保持一致
+    # 注意：通过 modelscope 命令行查看实际可用版本
     return {
         "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
         "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
         "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "v2.0.4",
         "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727": "v2.0.4",
-        "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v2.0.4",
+        "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v1.0.2",  # 实际可用版本
         "damo/speech_campplus_sv_zh-cn_16k-common": "v2.0.2",
-        "damo/speech_campplus-transformer_scl_zh-cn_16k-common": "v2.0.2",
+        "damo/speech_campplus-transformer_scl_zh-cn_16k-common": "v1.0.0",  # 实际可用版本
         "iic/speech_campplus_speaker-diarization_common": None,  # 使用默认版本
         "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch": None,
         "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online": None,
