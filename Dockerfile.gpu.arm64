@@ -12,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Install Python and system packages required for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.10 \
+        python3.10-dev \
         python3-pip \
         python-is-python3 \
         ffmpeg \
