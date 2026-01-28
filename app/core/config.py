@@ -140,6 +140,9 @@ class Settings:
         self.MAX_AUDIO_SIZE = int(
             os.getenv("MAX_AUDIO_SIZE", str(self.MAX_AUDIO_SIZE))
         )
+        self.ASR_SEGMENT_CONCURRENCY = int(
+            os.getenv("ASR_SEGMENT_CONCURRENCY", str(self.ASR_SEGMENT_CONCURRENCY))
+        )
 
     def _ensure_directories(self):
         """确保必需的目录存在"""
