@@ -22,6 +22,7 @@ PUSH="false"
 EXPORT_TAR="false"
 EXPORT_DIR="."
 INTERACTIVE="true"
+NO_CACHE="false"
 
 # 打印带颜色的消息
 info() { echo -e "${GREEN}[INFO]${NC} $1"; }
@@ -58,6 +59,7 @@ FunASR-API Docker 镜像构建脚本
     -e, --export          导出为 tar.gz 文件
     -o, --output DIR      导出目录 (默认: 当前目录)
     -r, --registry REG    镜像仓库 (默认: quantatrisk)
+    -n, --no-cache        不使用缓存，强制重新下载依赖
     -y, --yes             跳过交互确认
     -h, --help            显示帮助
 
@@ -66,6 +68,7 @@ FunASR-API Docker 镜像构建脚本
     ./build.sh -t gpu -a amd64          # 构建 GPU 版本 (amd64)
     ./build.sh -t all -a multi -p       # 构建所有版本多架构并推送
     ./build.sh -t gpu -a amd64 -e       # 构建并导出为 tar.gz
+    ./build.sh -t gpu -n                # 不使用缓存构建 GPU 版本
 
 EOF
 }
@@ -182,7 +185,7 @@ interactive_config() {
     [ $push_idx -eq 1 ] && PUSH="true"
 
     # 是否导出为 tar.gz
-    header "步骤 5/5: 导出设置"
+    header "步骤 5/6: 导出设置"
     if [[ "$PLATFORM" == *","* ]]; then
         echo -e "${YELLOW}注意: 多架构构建不支持导出为 tar.gz${NC}"
         EXPORT_TAR="false"
@@ -197,6 +200,12 @@ interactive_config() {
         fi
     fi
 
+    # 是否使用缓存
+    header "步骤 6/6: 构建缓存"
+    local cache_opts=("使用缓存 (更快)" "不使用缓存 (强制重新下载依赖)")
+    local cache_idx=$(simple_select "选择构建缓存策略:" "${cache_opts[@]}")
+    [ $cache_idx -eq 1 ] && NO_CACHE="true"
+
     # 确认配置
     header "配置确认"
     echo -e "  构建类型:   ${CYAN}${BUILD_TYPE}${NC}"
@@ -205,6 +214,7 @@ interactive_config() {
     echo -e "  镜像仓库:   ${CYAN}${REGISTRY}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
+    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
 
     echo ""
     echo -ne "确认开始构建? [Y/n]: "
@@ -244,6 +254,12 @@ build_cpu() {
     info "目标架构: $PLATFORM"
 
     local build_args="--platform $PLATFORM -t $tag -f Dockerfile"
+
+    # 添加 --no-cache 参数
+    if [ "$NO_CACHE" = "true" ]; then
+        build_args="$build_args --no-cache"
+        info "已启用 --no-cache，将强制重新下载所有依赖"
+    fi
 
     # 多架构只能 push
     if [[ "$PLATFORM" == *","* ]]; then
@@ -293,6 +309,12 @@ build_gpu() {
     info "目标架构: $PLATFORM"
 
     local build_args="--platform $PLATFORM -t $tag -f Dockerfile.gpu"
+
+    # 添加 --no-cache 参数
+    if [ "$NO_CACHE" = "true" ]; then
+        build_args="$build_args --no-cache"
+        info "已启用 --no-cache，将强制重新下载所有依赖"
+    fi
 
     # 多架构只能 push
     if [[ "$PLATFORM" == *","* ]]; then
@@ -372,6 +394,10 @@ parse_args() {
                 REGISTRY="$2"
                 shift 2
                 ;;
+            -n|--no-cache)
+                NO_CACHE="true"
+                shift
+                ;;
             -y|--yes)
                 INTERACTIVE="false"
                 shift
@@ -415,6 +441,7 @@ main() {
     echo -e "  版本标签:   ${CYAN}${VERSION}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
+    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
     echo ""
 
     # 执行构建
