@@ -25,8 +25,8 @@ def get_model_revisions():
     # 直接定义版本，与 app/core/config.py 保持一致
     # 注意：通过 modelscope 命令行查看实际可用版本
     return {
-        "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
-        "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
+        "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.2",
+        "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.2",
         "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "v2.0.4",
         "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727": "v2.0.4",
         "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v1.0.2",  # 实际可用版本
