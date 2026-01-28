@@ -56,7 +56,7 @@ class Settings:
         ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: fun-asr-nano）
     )
     VAD_MODEL: str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-    VAD_MODEL_REVISION: str = "v2.0.2"  # 与预下载版本一致
+    VAD_MODEL_REVISION: str = "v2.0.4"  # 与预下载版本一致
     PUNC_MODEL: str = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
     PUNC_MODEL_REVISION: str = "v2.0.4"
     PUNC_REALTIME_MODEL: str = (
