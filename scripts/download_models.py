@@ -100,6 +100,8 @@ def download_models():
         ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "语音活动检测模型(VAD)"),
         # 说话人分离模型 (CAM++) - 多说话人场景
         ("iic/speech_campplus_speaker-diarization_common", "说话人分离模型(CAM++)"),
+        # CAM++ 依赖的声纹识别模型
+        ("damo/speech_campplus_sv_zh-cn_16k-common", "声纹识别模型(CAM++依赖)"),
 
         # === 3. 后处理模型 ===
         # 标点模型
