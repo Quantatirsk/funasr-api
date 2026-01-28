@@ -19,6 +19,24 @@ if "MODELSCOPE_CACHE" not in os.environ:
     default_cache = os.path.expanduser("~/.cache/modelscope")
     os.environ["MODELSCOPE_CACHE"] = default_cache
 
+
+def get_model_revisions():
+    """从配置获取模型版本信息"""
+    # 直接定义版本，与 app/core/config.py 保持一致
+    return {
+        "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
+        "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
+        "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "v2.0.4",
+        "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727": "v2.0.4",
+        "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v2.0.4",
+        "damo/speech_campplus_sv_zh-cn_16k-common": "v2.0.2",
+        "damo/speech_campplus-transformer_scl_zh-cn_16k-common": "v2.0.2",
+        "iic/speech_campplus_speaker-diarization_common": None,  # 使用默认版本
+        "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch": None,
+        "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online": None,
+        "FunAudioLLM/Fun-ASR-Nano-2512": None,
+    }
+
 # 需要额外下载远程代码的模型（ModelScope 不包含 model.py）
 REMOTE_CODE_MODELS = {
     "FunAudioLLM/Fun-ASR-Nano-2512": {
@@ -143,9 +161,20 @@ def download_models():
             continue
 
         # 模型不存在，开始下载
-        print(f"    📥 开始下载...")
+        revisions = get_model_revisions()
+        revision = revisions.get(model_id)
+
+        print(f"    📥 开始下载...", end="")
+        if revision:
+            print(f" (版本: {revision})")
+        else:
+            print(" (使用默认版本)")
+
         try:
-            path = snapshot_download(model_id)
+            if revision:
+                path = snapshot_download(model_id, revision=revision)
+            else:
+                path = snapshot_download(model_id)
             print(f"    ✅ 下载完成: {path}")
             downloaded.append(model_id)
 
