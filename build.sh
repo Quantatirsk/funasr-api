@@ -66,9 +66,15 @@ FunASR-API Docker 镜像构建脚本
 示例:
     ./build.sh                          # 交互式构建
     ./build.sh -t gpu -a amd64          # 构建 GPU 版本 (amd64)
+    ./build.sh -t gpu -a arm64          # 构建 GPU 版本 (arm64)
+    ./build.sh -t gpu -a multi -p       # 构建 GPU 多架构并推送
     ./build.sh -t all -a multi -p       # 构建所有版本多架构并推送
     ./build.sh -t gpu -a amd64 -e       # 构建并导出为 tar.gz
     ./build.sh -t gpu -n                # 不使用缓存构建 GPU 版本
+
+注意:
+    GPU 多架构构建 (-a multi) 需要推送 (-p)，因为使用了不同的 Dockerfile
+    AMD64 使用 Dockerfile.gpu, ARM64 使用 Dockerfile.gpu.arm64
 
 EOF
 }
@@ -216,6 +222,12 @@ interactive_config() {
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
     echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
 
+    # 多架构 GPU 构建警告
+    if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]] && [[ "$PLATFORM" == *","* ]] && [ "$PUSH" != "true" ]; then
+        warn "多架构 GPU 构建需要推送镜像 (--push)"
+        warn "AMD64 使用 Dockerfile.gpu, ARM64 使用 Dockerfile.gpu.arm64"
+    fi
+
     echo ""
     echo -ne "确认开始构建? [Y/n]: "
     read -r confirm
@@ -253,7 +265,7 @@ build_cpu() {
     info "构建 CPU 版本: $tag"
     info "目标架构: $PLATFORM"
 
-    local build_args="--platform $PLATFORM -t $tag -f Dockerfile"
+    local build_args="--platform $PLATFORM -t $tag -f Dockerfile.cpu"
 
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
@@ -301,58 +313,128 @@ build_cpu() {
     fi
 }
 
-# 构建 GPU 版本
-build_gpu() {
-    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
+# 构建 GPU 版本 (AMD64)
+build_gpu_amd64() {
+    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64"
 
-    info "构建 GPU 版本: $tag"
-    info "目标架构: $PLATFORM"
+    info "构建 GPU AMD64 版本: $tag"
 
-    local build_args="--platform $PLATFORM -t $tag -f Dockerfile.gpu"
+    local build_args="--platform linux/amd64 -t $tag -f Dockerfile.gpu.amd64"
 
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
         build_args="$build_args --no-cache"
-        info "已启用 --no-cache，将强制重新下载所有依赖"
     fi
 
-    # 多架构只能 push
-    if [[ "$PLATFORM" == *","* ]]; then
-        if [ "$PUSH" != "true" ]; then
-            warn "多架构构建需要 --push，将自动启用推送"
-        fi
-        build_args="$build_args --push"
-    elif [ "$PUSH" = "true" ]; then
+    if [ "$PUSH" = "true" ]; then
         build_args="$build_args --push"
     elif [ "$EXPORT_TAR" = "true" ]; then
-        # 直接通过 buildx 导出为 tar
-        local arch_suffix=""
-        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
-        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
-        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch_suffix}.tar"
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-amd64.tar"
         mkdir -p "$EXPORT_DIR"
         build_args="$build_args --output type=docker,dest=${tar_file}"
-        info "将直接导出到: ${tar_file}.gz"
     else
         build_args="$build_args --load"
     fi
 
     docker buildx build $build_args .
+    info "GPU AMD64 版本构建完成: $tag"
+}
 
-    info "GPU 版本构建完成: $tag"
+# 构建 GPU 版本 (ARM64)
+build_gpu_arm64() {
+    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64"
 
-    # 如果使用了 --output 导出，压缩 tar 文件
-    if [ "$EXPORT_TAR" = "true" ] && [[ "$PLATFORM" != *","* ]] && [ "$PUSH" != "true" ]; then
-        local arch_suffix=""
-        [ "$PLATFORM" = "linux/amd64" ] && arch_suffix="amd64"
-        [ "$PLATFORM" = "linux/arm64" ] && arch_suffix="arm64"
-        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch_suffix}.tar"
-        if [ -f "$tar_file" ]; then
-            info "压缩: ${tar_file} → ${tar_file}.gz"
-            gzip -f "$tar_file"
-            local size=$(du -h "${tar_file}.gz" | cut -f1)
-            info "导出成功: ${tar_file}.gz ($size)"
+    info "构建 GPU ARM64 版本: $tag"
+
+    local build_args="--platform linux/arm64 -t $tag -f Dockerfile.gpu.arm64"
+
+    # 添加 --no-cache 参数
+    if [ "$NO_CACHE" = "true" ]; then
+        build_args="$build_args --no-cache"
+    fi
+
+    if [ "$PUSH" = "true" ]; then
+        build_args="$build_args --push"
+    elif [ "$EXPORT_TAR" = "true" ]; then
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-arm64.tar"
+        mkdir -p "$EXPORT_DIR"
+        build_args="$build_args --output type=docker,dest=${tar_file}"
+    else
+        build_args="$build_args --load"
+    fi
+
+    docker buildx build $build_args .
+    info "GPU ARM64 版本构建完成: $tag"
+}
+
+# 创建多架构 manifest
+build_gpu_manifest() {
+    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
+    local tag_amd64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64"
+    local tag_arm64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64"
+
+    info "创建 GPU 多架构 manifest: $tag"
+
+    # 删除旧的 manifest（如果存在）
+    docker manifest rm "$tag" 2>/dev/null || true
+
+    # 创建新的 manifest
+    docker manifest create "$tag" \
+        "$tag_amd64" \
+        "$tag_arm64"
+
+    # 注解架构信息
+    docker manifest annotate "$tag" "$tag_amd64" --arch amd64
+    docker manifest annotate "$tag" "$tag_arm64" --arch arm64
+
+    if [ "$PUSH" = "true" ]; then
+        docker manifest push "$tag"
+        info "GPU 多架构 manifest 推送完成: $tag"
+    else
+        info "GPU 多架构 manifest 创建完成 (本地): $tag"
+    fi
+}
+
+# 构建 GPU 版本（统一入口）
+build_gpu() {
+    info "目标架构: $PLATFORM"
+
+    # 根据目标架构决定构建策略
+    if [[ "$PLATFORM" == *","* ]]; then
+        # 多架构构建
+        if [ "$PUSH" != "true" ]; then
+            error "多架构构建需要 --push 参数，请添加 -p 或 --push"
         fi
+
+        build_gpu_amd64
+        build_gpu_arm64
+        build_gpu_manifest
+
+        # 同时更新 latest 标签
+        if [ "$VERSION" != "latest" ]; then
+            VERSION="latest" build_gpu_manifest
+        fi
+    elif [ "$PLATFORM" = "linux/amd64" ]; then
+        build_gpu_amd64
+    elif [ "$PLATFORM" = "linux/arm64" ]; then
+        build_gpu_arm64
+    else
+        error "不支持的架构: $PLATFORM"
+    fi
+
+    # 处理导出压缩
+    if [ "$EXPORT_TAR" = "true" ] && [ "$PUSH" != "true" ]; then
+        for arch in amd64 arm64; do
+            if [[ "$PLATFORM" == *"linux/$arch"* ]] || [ "$arch" = "amd64" -a "$PLATFORM" = "linux/amd64" ] || [ "$arch" = "arm64" -a "$PLATFORM" = "linux/arm64" ]; then
+                local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch}.tar"
+                if [ -f "$tar_file" ]; then
+                    info "压缩: ${tar_file} → ${tar_file}.gz"
+                    gzip -f "$tar_file"
+                    local size=$(du -h "${tar_file}.gz" | cut -f1)
+                    info "导出成功: ${tar_file}.gz ($size)"
+                fi
+            fi
+        done
     fi
 }
 
@@ -442,6 +524,20 @@ main() {
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
     echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
+
+    # 显示 Dockerfile 信息
+    if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]]; then
+        if [[ "$PLATFORM" == *","* ]]; then
+            echo -e "  GPU Dockerfile: ${CYAN}Dockerfile.gpu.amd64 + Dockerfile.gpu.arm64${NC}"
+        elif [ "$PLATFORM" = "linux/arm64" ]; then
+            echo -e "  GPU Dockerfile: ${CYAN}Dockerfile.gpu.arm64${NC}"
+        else
+            echo -e "  GPU Dockerfile: ${CYAN}Dockerfile.gpu.amd64${NC}"
+        fi
+    fi
+    if [[ "$BUILD_TYPE" == "cpu" || "$BUILD_TYPE" == "all" ]]; then
+        echo -e "  CPU Dockerfile: ${CYAN}Dockerfile.cpu${NC}"
+    fi
     echo ""
 
     # 执行构建

@@ -12,10 +12,8 @@ addict==2.4.0
 datasets==3.6.0
 scipy==1.15.3
 httpx==0.28.1
-# 注意：GPU版本使用基础镜像自带的PyTorch (2.3.1+CUDA)
-# 如需特定版本，请在Dockerfile中单独安装
-torch
-torchaudio
+# 注意：GPU版本在Dockerfile中安装PyTorch (2.3.1+CUDA)
+# torch和torchaudio已从requirements中移除，避免重复安装
 wetext==0.1.2
 python-dotenv==1.2.1
 transformers==4.51.0
