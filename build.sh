@@ -255,7 +255,6 @@ check_buildx() {
 # 构建 CPU 版本
 build_cpu() {
     local tag="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
-    local tag_gpu="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
 
     # CPU 版本使用不带 gpu 前缀的标签
     if [ "$VERSION" = "latest" ]; then
@@ -313,65 +312,51 @@ build_cpu() {
     fi
 }
 
-# 构建 GPU 版本 (AMD64)
+# 构建 GPU 版本 (AMD64) - 使用临时标签
 build_gpu_amd64() {
-    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64"
+    local temp_tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64-temp"
 
-    info "构建 GPU AMD64 版本: $tag"
+    info "构建 GPU AMD64 版本 (临时标签)"
 
-    local build_args="--platform linux/amd64 -t $tag -f Dockerfile.gpu.amd64"
+    local build_args="--platform linux/amd64 -t $temp_tag -f Dockerfile.gpu.amd64"
 
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
         build_args="$build_args --no-cache"
     fi
 
-    if [ "$PUSH" = "true" ]; then
-        build_args="$build_args --push"
-    elif [ "$EXPORT_TAR" = "true" ]; then
-        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-amd64.tar"
-        mkdir -p "$EXPORT_DIR"
-        build_args="$build_args --output type=docker,dest=${tar_file}"
-    else
-        build_args="$build_args --load"
-    fi
+    # 多架构构建必须推送
+    build_args="$build_args --push"
 
     docker buildx build $build_args .
-    info "GPU AMD64 版本构建完成: $tag"
+    info "GPU AMD64 版本构建完成"
 }
 
-# 构建 GPU 版本 (ARM64)
+# 构建 GPU 版本 (ARM64) - 使用临时标签
 build_gpu_arm64() {
-    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64"
+    local temp_tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64-temp"
 
-    info "构建 GPU ARM64 版本: $tag"
+    info "构建 GPU ARM64 版本 (临时标签)"
 
-    local build_args="--platform linux/arm64 -t $tag -f Dockerfile.gpu.arm64"
+    local build_args="--platform linux/arm64 -t $temp_tag -f Dockerfile.gpu.arm64"
 
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
         build_args="$build_args --no-cache"
     fi
 
-    if [ "$PUSH" = "true" ]; then
-        build_args="$build_args --push"
-    elif [ "$EXPORT_TAR" = "true" ]; then
-        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-arm64.tar"
-        mkdir -p "$EXPORT_DIR"
-        build_args="$build_args --output type=docker,dest=${tar_file}"
-    else
-        build_args="$build_args --load"
-    fi
+    # 多架构构建必须推送
+    build_args="$build_args --push"
 
     docker buildx build $build_args .
-    info "GPU ARM64 版本构建完成: $tag"
+    info "GPU ARM64 版本构建完成"
 }
 
-# 创建多架构 manifest
+# 创建多架构 manifest（使用统一标签，清理临时标签）
 build_gpu_manifest() {
     local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
-    local tag_amd64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64"
-    local tag_arm64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64"
+    local temp_amd64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-amd64-temp"
+    local temp_arm64="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}-arm64-temp"
 
     info "创建 GPU 多架构 manifest: $tag"
 
@@ -380,19 +365,53 @@ build_gpu_manifest() {
 
     # 创建新的 manifest
     docker manifest create "$tag" \
-        "$tag_amd64" \
-        "$tag_arm64"
+        "$temp_amd64" \
+        "$temp_arm64"
 
     # 注解架构信息
-    docker manifest annotate "$tag" "$tag_amd64" --arch amd64
-    docker manifest annotate "$tag" "$tag_arm64" --arch arm64
+    docker manifest annotate "$tag" "$temp_amd64" --arch amd64
+    docker manifest annotate "$tag" "$temp_arm64" --arch arm64
+
+    # 推送 manifest
+    docker manifest push "$tag"
+    info "GPU 多架构 manifest 推送完成: $tag"
+
+    # 清理临时标签（使用 buildx imagetools 删除）
+    info "清理临时标签..."
+    docker buildx imagetools rm "$temp_amd64" 2>/dev/null || true
+    docker buildx imagetools rm "$temp_arm64" 2>/dev/null || true
+    info "临时标签已清理"
+}
+
+# 构建单架构 GPU 版本（使用统一标签）
+build_gpu_single() {
+    local arch="$1"
+    local tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
+
+    info "构建 GPU $arch 版本: $tag"
+
+    local dockerfile="Dockerfile.gpu.amd64"
+    [ "$arch" = "arm64" ] && dockerfile="Dockerfile.gpu.arm64"
+
+    local build_args="--platform linux/$arch -t $tag -f $dockerfile"
+
+    # 添加 --no-cache 参数
+    if [ "$NO_CACHE" = "true" ]; then
+        build_args="$build_args --no-cache"
+    fi
 
     if [ "$PUSH" = "true" ]; then
-        docker manifest push "$tag"
-        info "GPU 多架构 manifest 推送完成: $tag"
+        build_args="$build_args --push"
+    elif [ "$EXPORT_TAR" = "true" ]; then
+        local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-${arch}.tar"
+        mkdir -p "$EXPORT_DIR"
+        build_args="$build_args --output type=docker,dest=${tar_file}"
     else
-        info "GPU 多架构 manifest 创建完成 (本地): $tag"
+        build_args="$build_args --load"
     fi
+
+    docker buildx build $build_args .
+    info "GPU $arch 版本构建完成: $tag"
 }
 
 # 构建 GPU 版本（统一入口）
@@ -415,9 +434,9 @@ build_gpu() {
             VERSION="latest" build_gpu_manifest
         fi
     elif [ "$PLATFORM" = "linux/amd64" ]; then
-        build_gpu_amd64
+        build_gpu_single "amd64"
     elif [ "$PLATFORM" = "linux/arm64" ]; then
-        build_gpu_arm64
+        build_gpu_single "arm64"
     else
         error "不支持的架构: $PLATFORM"
     fi
