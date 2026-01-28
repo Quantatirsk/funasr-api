@@ -78,7 +78,7 @@ class Settings:
     MAX_AUDIO_SIZE: int = 2048 * 1024 * 1024  # 2GB
 
     # 分段识别并发配置
-    ASR_SEGMENT_CONCURRENCY: int = 2  # 分段识别并发数，建议 2-4（根据 GPU 内存调整）
+    ASR_SEGMENT_CONCURRENCY: int = 4  # 分段识别并发数，建议 2-4（根据 GPU 内存调整）
 
     def __init__(self):
         """从环境变量读取配置"""
