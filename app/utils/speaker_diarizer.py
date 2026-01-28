@@ -178,36 +178,82 @@ class SpeakerDiarizer:
         return merged
 
     def split_long_segments(
-        self, segments: List[SpeakerSegment]
+        self,
+        audio_path: str,
+        segments: List[SpeakerSegment]
     ) -> List[SpeakerSegment]:
-        """将超过最大时长的片段切分"""
+        """将超过最大时长的片段使用VAD智能切分
+
+        利用 AudioSplitter 的 VAD 能力，按语音边界切分，
+        避免在说话中间切断。
+        """
+        from .audio_splitter import AudioSplitter
+
         result = []
+        splitter = AudioSplitter(max_segment_sec=self.max_segment_sec / 1000)
 
         for seg in segments:
             if seg.duration_ms <= self.max_segment_ms:
                 result.append(seg)
             else:
-                # 需要切分
-                current_start = seg.start_ms
-                while current_start < seg.end_ms:
-                    current_end = min(current_start + self.max_segment_ms, seg.end_ms)
-                    # 确保最后一段不会太短
-                    remaining = seg.end_ms - current_end
-                    if 0 < remaining < self.min_segment_ms:
-                        current_end = seg.end_ms
+                # 使用 VAD 智能切分
+                logger.info(f"说话人 {seg.speaker_id} 片段 {seg.start_ms}ms-{seg.end_ms}ms 超长，使用VAD切分")
 
-                    result.append(SpeakerSegment(
-                        start_ms=current_start,
-                        end_ms=current_end,
-                        speaker_id=seg.speaker_id,
-                    ))
-                    current_start = current_end
+                try:
+                    # 提取该段音频的 VAD 边界
+                    vad_segments = splitter.get_vad_segments(audio_path)
+
+                    # 过滤出在该段范围内的 VAD 段
+                    seg_vad_segments = [
+                        (start, end) for start, end in vad_segments
+                        if seg.start_ms <= start < seg.end_ms or seg.start_ms < end <= seg.end_ms
+                    ]
+
+                    if seg_vad_segments:
+                        # 使用贪婪合并算法
+                        merged_vad = splitter.merge_segments_greedy(seg_vad_segments, seg.end_ms)
+
+                        # 限制每段在有效范围内
+                        for start_ms, end_ms in merged_vad:
+                            actual_start = max(start_ms, seg.start_ms)
+                            actual_end = min(end_ms, seg.end_ms)
+
+                            if actual_end - actual_start >= self.min_segment_ms:
+                                result.append(SpeakerSegment(
+                                    start_ms=actual_start,
+                                    end_ms=actual_end,
+                                    speaker_id=seg.speaker_id,
+                                ))
+                    else:
+                        # VAD 未检测到语音，fallback 到硬切
+                        logger.warning(f"VAD 未检测到语音边界，fallback 到硬切")
+                        self._hard_split_segment(seg, result)
+
+                except Exception as e:
+                    logger.error(f"VAD 切分失败，fallback 到硬切: {e}")
+                    self._hard_split_segment(seg, result)
 
         split_count = len(result) - len(segments)
         if split_count > 0:
             logger.info(f"切分超长片段: {len(segments)} → {len(result)} (+{split_count})")
 
         return result
+
+    def _hard_split_segment(self, seg: SpeakerSegment, result: List[SpeakerSegment]) -> None:
+        """硬性切分（fallback）"""
+        current_start = seg.start_ms
+        while current_start < seg.end_ms:
+            current_end = min(current_start + self.max_segment_ms, seg.end_ms)
+            remaining = seg.end_ms - current_end
+            if 0 < remaining < self.min_segment_ms:
+                current_end = seg.end_ms
+
+            result.append(SpeakerSegment(
+                start_ms=current_start,
+                end_ms=current_end,
+                speaker_id=seg.speaker_id,
+            ))
+            current_start = current_end
 
     def split_audio_by_speakers(
         self,
@@ -240,8 +286,8 @@ class SpeakerDiarizer:
             # 2. 合并同一说话人连续片段
             merged_segments = self.merge_consecutive_segments(raw_segments)
 
-            # 3. 切分超长片段
-            final_segments = self.split_long_segments(merged_segments)
+            # 3. 切分超长片段（使用VAD智能切分）
+            final_segments = self.split_long_segments(audio_path, merged_segments)
 
             # 4. 加载音频并提取片段
             logger.info("加载音频并提取片段...")

@@ -237,33 +237,56 @@ class BaseASREngine(ABC):
 
             logger.info(f"音频已分割为 {len(segments_to_process)} 段")
 
-            # 逐段识别
+            # 并发识别配置
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            concurrency = settings.ASR_SEGMENT_CONCURRENCY
+            logger.info(f"使用 {concurrency} 线程并发识别")
+
             results: List[ASRSegmentResult] = []
             all_texts: List[str] = []
 
-            try:
-                for idx, segment in enumerate(segments_to_process):
-                    speaker_id = getattr(segment, 'speaker_id', None)
-                    speaker_info = f" [{speaker_id}]" if speaker_id else ""
+            def recognize_segment(args):
+                """识别单个片段"""
+                idx, segment = args
+                speaker_id = getattr(segment, 'speaker_id', None)
+                speaker_info = f" [{speaker_id}]" if speaker_id else ""
 
-                    logger.info(
-                        f"识别分段 {idx + 1}/{len(segments_to_process)}: "
-                        f"{segment.start_sec:.2f}s - {segment.end_sec:.2f}s{speaker_info}"
+                logger.info(
+                    f"开始识别分段 {idx + 1}/{len(segments_to_process)}: "
+                    f"{segment.start_sec:.2f}s - {segment.end_sec:.2f}s{speaker_info}"
+                )
+
+                try:
+                    if not segment.temp_file:
+                        logger.warning(f"分段 {idx + 1} 临时文件不存在，跳过")
+                        return idx, None, segment, speaker_id
+
+                    segment_text = self.transcribe_file(
+                        audio_path=segment.temp_file,
+                        hotwords=hotwords,
+                        enable_punctuation=enable_punctuation,
+                        enable_itn=enable_itn,
+                        enable_vad=False,
+                        sample_rate=sample_rate,
                     )
 
-                    try:
-                        if not segment.temp_file:
-                            logger.warning(f"分段 {idx + 1} 临时文件不存在，跳过")
-                            continue
+                    logger.info(f"分段 {idx + 1} 识别完成")
+                    return idx, segment_text, segment, speaker_id
 
-                        segment_text = self.transcribe_file(
-                            audio_path=segment.temp_file,
-                            hotwords=hotwords,
-                            enable_punctuation=enable_punctuation,
-                            enable_itn=enable_itn,
-                            enable_vad=False,
-                            sample_rate=sample_rate,
-                        )
+                except Exception as e:
+                    logger.error(f"分段 {idx + 1} 识别失败: {e}")
+                    return idx, None, segment, speaker_id
+
+            try:
+                # 使用线程池并发处理
+                with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                    futures = {
+                        executor.submit(recognize_segment, (idx, seg)): idx
+                        for idx, seg in enumerate(segments_to_process)
+                    }
+
+                    for future in as_completed(futures):
+                        idx, segment_text, segment, speaker_id = future.result()
 
                         if segment_text:
                             results.append(
@@ -275,9 +298,6 @@ class BaseASREngine(ABC):
                                 )
                             )
                             all_texts.append(segment_text)
-
-                    except Exception as e:
-                        logger.error(f"分段 {idx + 1} 识别失败: {e}")
 
             finally:
                 # 清理临时文件
