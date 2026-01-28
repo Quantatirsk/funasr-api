@@ -30,7 +30,7 @@ def get_model_revisions():
         "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "v2.0.4",
         "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727": "v2.0.4",
         "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v1.0.2",  # 实际可用版本
-        "damo/speech_campplus_sv_zh-cn_16k-common": "v2.0.2",
+        "damo/speech_campplus_sv_zh-cn_16k-common": None,  # 使用默认版本
         "damo/speech_campplus-transformer_scl_zh-cn_16k-common": "v1.0.0",  # 实际可用版本
         "iic/speech_campplus_speaker-diarization_common": None,  # 使用默认版本
         "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch": None,
