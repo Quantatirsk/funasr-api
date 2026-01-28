@@ -203,10 +203,11 @@ class SpeakerDiarizer:
                     # 提取该段音频的 VAD 边界
                     vad_segments = splitter.get_vad_segments(audio_path)
 
-                    # 过滤出在该段范围内的 VAD 段
+                    # 过滤出与该段有交集的 VAD 段
+                    # 条件：两个时间段有重叠（不是完全分离）
                     seg_vad_segments = [
                         (start, end) for start, end in vad_segments
-                        if seg.start_ms <= start < seg.end_ms or seg.start_ms < end <= seg.end_ms
+                        if not (end <= seg.start_ms or start >= seg.end_ms)  # 不是完全在范围外
                     ]
 
                     if seg_vad_segments:

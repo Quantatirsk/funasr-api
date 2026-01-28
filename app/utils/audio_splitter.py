@@ -144,11 +144,13 @@ class AudioSplitter:
             return self._split_by_fixed_duration(total_duration_ms)
 
         merged = []
-        current_start = 0
+        # 按时间排序，从第一个 VAD 段的开始时间开始
+        sorted_vad = sorted(vad_segments, key=lambda x: x[0])
+        current_start = sorted_vad[0][0]
         i = 0
 
-        while i < len(vad_segments):
-            seg_start, seg_end = vad_segments[i]
+        while i < len(sorted_vad):
+            seg_start, seg_end = sorted_vad[i]
 
             # 计算如果包含当前段，总时长是多少
             potential_end = seg_end
@@ -159,7 +161,7 @@ class AudioSplitter:
                 i += 1
 
                 # 如果是最后一段，结束
-                if i >= len(vad_segments):
+                if i >= len(sorted_vad):
                     # 使用最后一个 VAD 段的结束位置，或音频总时长
                     final_end = min(seg_end, total_duration_ms)
                     if final_end > current_start:
@@ -181,13 +183,13 @@ class AudioSplitter:
 
                     # 剩余部分作为下一段的开始
                     i += 1
-                    if i >= len(vad_segments):
+                    if i >= len(sorted_vad):
                         # 这是最后一段，保存剩余部分
                         if seg_end > current_start:
                             merged.append((current_start, seg_end))
                 else:
                     # 不是第一段，在上一段结束处切分
-                    prev_end = vad_segments[i - 1][1]
+                    prev_end = sorted_vad[i - 1][1]
                     if prev_end > current_start:
                         merged.append((current_start, prev_end))
                         current_start = prev_end
