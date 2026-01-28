@@ -26,52 +26,60 @@ def print_model_statistics(result: dict, use_logger: bool = True):
     loaded_models = []
     failed_models = []
     skipped_models = []
+    model_index = 1  # 序号计数器
 
     # 统计默认ASR模型
     if result["asr_default_model"]["loaded"]:
         model_id = result["asr_default_model"]["model_id"]
         loaded_models.append(f"默认ASR模型({model_id})")
-        output(f"   ✅ 默认ASR模型({model_id}): 已加载")
+        output(f"   {model_index}. ✅ 默认ASR模型({model_id}): 已加载")
+        model_index += 1
     elif result["asr_default_model"]["error"] is not None:
         failed_models.append("默认ASR模型")
         if use_logger:
-            logger.error(f"   ❌ 默认ASR模型: {result['asr_default_model']['error']}")
+            logger.error(f"   {model_index}. ❌ 默认ASR模型: {result['asr_default_model']['error']}")
         else:
-            output(f"   ❌ 默认ASR模型: {result['asr_default_model']['error']}")
+            output(f"   {model_index}. ❌ 默认ASR模型: {result['asr_default_model']['error']}")
+        model_index += 1
 
     # 统计自定义ASR模型
     for model_id, status in result["asr_custom_models"].items():
         if status["loaded"]:
             loaded_models.append(f"自定义ASR模型({model_id})")
-            output(f"   ✅ 自定义ASR模型({model_id}): 已加载")
+            output(f"   {model_index}. ✅ 自定义ASR模型({model_id}): 已加载")
+            model_index += 1
         elif status["error"] is not None:
             failed_models.append(f"自定义ASR模型({model_id})")
             if use_logger:
-                logger.error(f"   ❌ 自定义ASR模型({model_id}): {status['error']}")
+                logger.error(f"   {model_index}. ❌ 自定义ASR模型({model_id}): {status['error']}")
             else:
-                output(f"   ❌ 自定义ASR模型({model_id}): {status['error']}")
+                output(f"   {model_index}. ❌ 自定义ASR模型({model_id}): {status['error']}")
+            model_index += 1
 
-    # 统计其他模型
-    other_models = {
-        "vad_model": "VAD模型",
-        "punc_model": "标点符号模型(离线)",
-        "punc_realtime_model": "标点符号模型(实时)",
-        "speaker_diarization_model": "说话人分离模型(CAM++)",
-    }
+    # 统计其他模型（按优化后的顺序）
+    other_models = [
+        ("vad_model", "语音活动检测模型(VAD)"),
+        ("punc_model", "标点符号模型(离线)"),
+        ("punc_realtime_model", "标点符号模型(实时)"),
+        ("speaker_diarization_model", "说话人分离模型(CAM++)"),
+    ]
 
-    for key, name in other_models.items():
+    for key, name in other_models:
         if result[key]["loaded"]:
             loaded_models.append(name)
-            output(f"   ✅ {name}: 已加载")
+            output(f"   {model_index}. ✅ {name}: 已加载")
+            model_index += 1
         elif result[key]["error"] is not None:
             failed_models.append(name)
             if use_logger:
-                logger.error(f"   ❌ {name}: {result[key]['error']}")
+                logger.error(f"   {model_index}. ❌ {name}: {result[key]['error']}")
             else:
-                output(f"   ❌ {name}: {result[key]['error']}")
+                output(f"   {model_index}. ❌ {name}: {result[key]['error']}")
+            model_index += 1
         else:
             skipped_models.append(name)
-            output(f"   ⏭️  {name}: 已跳过")
+            output(f"   {model_index}. ⏭️  {name}: 已跳过")
+            model_index += 1
 
     output("-" * 60)
     loaded_count = len(loaded_models)
@@ -208,10 +216,10 @@ def preload_models() -> dict:
     else:
         logger.info("⏭️  未配置自定义ASR模型加载 (AUTO_LOAD_CUSTOM_ASR_MODELS为空)")
 
-    # 3. 预加载VAD模型 (如果ASR模式包含离线模型)
+    # 3. 预加载语音活动检测模型(VAD) (如果ASR模式包含离线模型)
     if settings.ASR_MODEL_MODE.lower() in ["all", "offline"]:
         try:
-            logger.info("📥 正在加载VAD模型...")
+            logger.info("📥 正在加载语音活动检测模型(VAD)...")
             from ..services.asr.engine import get_global_vad_model
 
             device = asr_engine.device if asr_engine else settings.DEVICE
@@ -219,16 +227,16 @@ def preload_models() -> dict:
 
             if vad_model:
                 result["vad_model"]["loaded"] = True
-                logger.info("✅ VAD模型加载成功")
+                logger.info("✅ 语音活动检测模型(VAD)加载成功")
             else:
-                result["vad_model"]["error"] = "VAD模型加载后返回None"
-                logger.warning("⚠️  VAD模型加载后返回None")
+                result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
+                logger.warning("⚠️  语音活动检测模型(VAD)加载后返回None")
 
         except Exception as e:
             result["vad_model"]["error"] = str(e)
-            logger.error(f"❌ VAD模型加载失败: {e}")
+            logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
     else:
-        logger.info("⏭️  跳过VAD模型加载 (ASR_MODEL_MODE=realtime)")
+        logger.info("⏭️  跳过语音活动检测模型(VAD)加载 (ASR_MODEL_MODE=realtime)")
 
     # 4. 预加载标点符号模型 (离线版)
     try:

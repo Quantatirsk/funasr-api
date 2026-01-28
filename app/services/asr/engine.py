@@ -91,15 +91,23 @@ def resolve_model_path(model_id: Optional[str]) -> str:
 
     # 获取 ModelScope 缓存目录
     cache_dir = os.environ.get("MODELSCOPE_CACHE", os.path.expanduser("~/.cache/modelscope"))
-    local_path = Path(cache_dir) / "hub" / model_id
 
-    if local_path.exists() and local_path.is_dir():
-        resolved = str(local_path)
-        logger.info(f"模型 {model_id} 使用本地缓存: {resolved}")
-        return resolved
-    else:
-        logger.warning(f"模型 {model_id} 本地缓存不存在: {local_path}")
-        return model_id
+    # ModelScope 有两种可能的缓存路径结构
+    possible_paths = [
+        Path(cache_dir) / "hub" / model_id,
+        Path(cache_dir) / "models" / model_id,
+    ]
+
+    # 检查哪个路径存在
+    for local_path in possible_paths:
+        if local_path.exists() and local_path.is_dir():
+            resolved = str(local_path)
+            logger.info(f"模型 {model_id} 使用本地缓存: {resolved}")
+            return resolved
+
+    # 都不存在，返回模型ID（运行时会自动下载）
+    logger.warning(f"模型 {model_id} 本地缓存不存在，将在运行时下载")
+    return model_id
 
 
 class ModelType(Enum):
@@ -529,7 +537,7 @@ class FunASREngine(RealTimeASREngine):
                 if need_vad:
                     # 使用VAD时，需要构建临时AutoModel包装器
                     # 预加载全局VAD和PUNC实例
-                    logger.debug("启用VAD，预加载全局VAD模型")
+                    logger.debug("启用VAD，预加载全局语音活动检测(VAD)模型")
                     vad_model_instance = get_global_vad_model(self._device)
 
                     punc_model_instance = None
@@ -788,7 +796,7 @@ class FunASREngine(RealTimeASREngine):
 # 全局ASR引擎实例缓存
 _asr_engine: Optional[BaseASREngine] = None
 
-# 全局VAD模型缓存（避免重复加载）
+# 全局语音活动检测(VAD)模型缓存（避免重复加载）
 _global_vad_model = None
 _vad_model_lock = threading.Lock()
 
@@ -802,7 +810,7 @@ _punc_realtime_model_lock = threading.Lock()
 
 
 def get_global_vad_model(device: str):
-    """获取全局VAD模型实例"""
+    """获取全局语音活动检测(VAD)模型实例"""
     global _global_vad_model
 
     with _vad_model_lock:
@@ -810,16 +818,16 @@ def get_global_vad_model(device: str):
             try:
                 # 解析模型路径：优先使用本地缓存
                 resolved_vad_path = resolve_model_path(settings.VAD_MODEL)
-                logger.info(f"正在加载全局VAD模型: {resolved_vad_path}")
+                logger.info(f"正在加载全局语音活动检测(VAD)模型: {resolved_vad_path}")
 
                 _global_vad_model = AutoModel(
                     model=resolved_vad_path,
                     device=device,
                     **settings.FUNASR_AUTOMODEL_KWARGS,
                 )
-                logger.info("全局VAD模型加载成功")
+                logger.info("全局语音活动检测(VAD)模型加载成功")
             except Exception as e:
-                logger.error(f"全局VAD模型加载失败: {str(e)}")
+                logger.error(f"全局语音活动检测(VAD)模型加载失败: {str(e)}")
                 _global_vad_model = None
                 raise
 
@@ -827,7 +835,7 @@ def get_global_vad_model(device: str):
 
 
 def clear_global_vad_model():
-    """清理全局VAD模型缓存"""
+    """清理全局语音活动检测(VAD)模型缓存"""
     global _global_vad_model
 
     with _vad_model_lock:
@@ -836,7 +844,7 @@ def clear_global_vad_model():
             _global_vad_model = None
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            logger.info("全局VAD模型缓存已清理")
+            logger.info("全局语音活动检测(VAD)模型缓存已清理")
 
 
 def get_global_punc_model(device: str):
