@@ -22,8 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && ln -sf /usr/bin/python3.10 /usr/bin/python \
         && ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# Install PyTorch with CUDA support (ARM64 uses public index)
-RUN pip install --no-cache-dir torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+# Install PyTorch with CUDA support (ARM64 limited versions available)
+# Note: For ARM64 + CUDA 12.1, only PyTorch 2.0.1 and below are available
+RUN pip install --no-cache-dir torch==2.0.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu121
 
 WORKDIR /app
 
