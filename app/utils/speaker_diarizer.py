@@ -60,11 +60,15 @@ def get_global_diarization_pipeline():
             try:
                 from modelscope.pipelines import pipeline
                 from modelscope.utils.constant import Tasks
+                from ..services.asr.engine import resolve_model_path
 
-                logger.info("正在加载 CAM++ 说话人分离模型...")
+                model_id = 'iic/speech_campplus_speaker-diarization_common'
+                model_path = resolve_model_path(model_id)
+
+                logger.info(f"正在加载 CAM++ 说话人分离模型: {model_path}")
                 _global_diarization_pipeline = pipeline(
                     task=Tasks.speaker_diarization,
-                    model='iic/speech_campplus_speaker-diarization_common',
+                    model=model_path,
                 )
                 logger.info("CAM++ 模型加载成功")
             except Exception as e:
