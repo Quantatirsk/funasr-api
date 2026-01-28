@@ -97,7 +97,9 @@ def download_models():
 
         # === 2. 音频预处理模型 ===
         # 语音活动检测(VAD)模型 - 检测语音段落
-        ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "语音活动检测模型(VAD)"),
+        # 注意: FunASR 内部可能使用 damo/ 命名空间，需要同时下载两种前缀
+        ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "语音活动检测模型(VAD) - iic"),
+        ("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch", "语音活动检测模型(VAD) - damo"),
         # 说话人分离模型 (CAM++) - 多说话人场景
         ("iic/speech_campplus_speaker-diarization_common", "说话人分离模型(CAM++)"),
         # CAM++ 依赖的声纹识别模型
