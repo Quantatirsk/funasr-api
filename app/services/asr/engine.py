@@ -285,9 +285,16 @@ class BaseASREngine(ABC):
                         for idx, seg in enumerate(segments_to_process)
                     }
 
+                    # 收集所有结果，按索引排序
+                    unordered_results = []
                     for future in as_completed(futures):
                         idx, segment_text, segment, speaker_id = future.result()
+                        unordered_results.append((idx, segment_text, segment, speaker_id))
 
+                    # 按原始索引排序，确保结果顺序与音频时间顺序一致
+                    unordered_results.sort(key=lambda x: x[0])
+
+                    for idx, segment_text, segment, speaker_id in unordered_results:
                         if segment_text:
                             results.append(
                                 ASRSegmentResult(
