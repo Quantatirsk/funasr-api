@@ -104,6 +104,7 @@ def download_models():
         ("iic/speech_campplus_speaker-diarization_common", "说话人分离模型(CAM++)"),
         # CAM++ 依赖的声纹识别模型
         ("damo/speech_campplus_sv_zh-cn_16k-common", "声纹识别模型(CAM++依赖)"),
+        ("damo/speech_campplus-transformer_scl_zh-cn_16k-common", "CAM++ transformer模型(说话人分离依赖)"),
 
         # === 3. 后处理模型 ===
         # 标点模型
