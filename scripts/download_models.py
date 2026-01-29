@@ -20,23 +20,12 @@ if "MODELSCOPE_CACHE" not in os.environ:
     os.environ["MODELSCOPE_CACHE"] = default_cache
 
 
-def get_model_revisions():
-    """从配置获取模型版本信息"""
-    # 直接定义版本，与 app/core/config.py 保持一致
-    # 注意：通过 modelscope 命令行查看实际可用版本
-    return {
-        "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
-        "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": "v2.0.4",
-        "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "v2.0.4",
-        "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727": "v2.0.4",
-        "iic/speech_ngram_lm_zh-cn-ai-wesp-fst": "v1.0.2",  # 实际可用版本
-        "damo/speech_campplus_sv_zh-cn_16k-common": None,  # 使用默认版本
-        "damo/speech_campplus-transformer_scl_zh-cn_16k-common": "v1.0.0",  # 实际可用版本
-        "iic/speech_campplus_speaker-diarization_common": None,  # 使用默认版本
-        "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch": None,
-        "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online": None,
-        "FunAudioLLM/Fun-ASR-Nano-2512": None,
-    }
+# 模型版本控制已移除，全部使用 ModelScope 默认版本
+# 如需指定特定版本，可在下方添加：
+# MODEL_REVISIONS = {
+#     "model_id": "v1.0.0",
+# }
+MODEL_REVISIONS = {}
 
 # 需要额外下载远程代码的模型（ModelScope 不包含 model.py）
 REMOTE_CODE_MODELS = {
@@ -162,8 +151,7 @@ def download_models():
             continue
 
         # 模型不存在，开始下载
-        revisions = get_model_revisions()
-        revision = revisions.get(model_id)
+        revision = MODEL_REVISIONS.get(model_id)
 
         print(f"    📥 开始下载...", end="")
         if revision:
