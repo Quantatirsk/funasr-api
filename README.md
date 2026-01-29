@@ -24,13 +24,26 @@
 
 ## 快速部署
 
-### Docker 部署(推荐)
+### 1. 下载模型（首次部署必需）
+
+```bash
+# 下载所有模型到本地（约 10-20GB）
+python scripts/download_models.py
+
+# 创建模型目录软链接
+ln -s ~/.cache/modelscope ./models
+```
+
+> 详细说明请查看 [模型下载与部署指南](./MODEL_SETUP.md)
+
+### 2. Docker 部署(推荐)
 
 ```bash
 # 启动服务（GPU 版本）
 docker run -d --name funasr-api \
   --gpus all \
   -p 8000:8000 \
+  -v ./models:/root/.cache/modelscope \
   -v ./logs:/app/logs \
   -v ./temp:/app/temp \
   quantatrisk/funasr-api:gpu-latest
@@ -42,6 +55,8 @@ docker-compose up -d
 服务将在 `http://localhost:8000` 启动
 
 **CPU 版本**请使用镜像 `quantatrisk/funasr-api:latest`
+
+**内网部署**：将 `models/` 目录打包复制到内网机器即可，详见 [MODEL_SETUP.md](./MODEL_SETUP.md)
 
 > 详细部署说明请查看 [部署指南](./docs/deployment.md)
 

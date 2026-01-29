@@ -36,10 +36,6 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Download all models during build
-COPY scripts/download_models.py /tmp/download_models.py
-RUN python /tmp/download_models.py && rm /tmp/download_models.py
-
 # Clean apt packages and cache
 RUN apt remove -y build-essential && apt autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

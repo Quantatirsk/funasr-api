@@ -22,6 +22,7 @@ services:
       - ./temp:/app/temp
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./models:/root/.cache/modelscope
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
