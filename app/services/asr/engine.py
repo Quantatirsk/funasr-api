@@ -750,6 +750,34 @@ class FunASREngine(RealTimeASREngine):
 
         return temp_automodel.generate(**generate_kwargs)
 
+    def _apply_punc_to_text(self, text: str) -> str:
+        """手动应用标点符号到文本
+
+        Args:
+            text: 无标点的识别文本
+
+        Returns:
+            添加标点后的文本
+        """
+        if not text:
+            return text
+
+        try:
+            logger.debug(f"手动应用PUNC模型: {text[:50]}...")
+            punc_model_instance = get_global_punc_model(self._device)
+            punc_result = punc_model_instance.generate(
+                input=text,
+                cache={},
+            )
+            if punc_result and len(punc_result) > 0:
+                text_with_punc = punc_result[0].get("text", text)
+                logger.debug(f"标点添加完成: {text_with_punc[:50]}...")
+                return text_with_punc
+        except Exception as e:
+            logger.warning(f"PUNC模型应用失败: {e}, 返回原文本")
+
+        return text
+
     def _apply_punc_to_result(
         self, result: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -761,15 +789,8 @@ class FunASREngine(RealTimeASREngine):
         if not text:
             return result
 
-        logger.debug("手动应用PUNC模型")
-        punc_model_instance = get_global_punc_model(self._device)
-        punc_result = punc_model_instance.generate(
-            input=text,
-            cache={},
-        )
-        if punc_result and len(punc_result) > 0:
-            result[0]["text"] = punc_result[0].get("text", text)
-            logger.debug("标点符号添加完成")
+        text_with_punc = self._apply_punc_to_text(text)
+        result[0]["text"] = text_with_punc
 
         return result
 
@@ -844,6 +865,10 @@ class FunASREngine(RealTimeASREngine):
                 for res in batch_results:
                     if isinstance(res, dict):
                         text = res.get("text", "").strip()
+
+                        # 应用PUNC模型（Paraformer需要手动添加标点）
+                        if enable_punctuation and text and self._offline_loader.supports_external_punc:
+                            text = self._apply_punc_to_text(text)
 
                         # 应用ITN处理
                         if enable_itn and text:
