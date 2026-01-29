@@ -16,7 +16,7 @@ httpx==0.28.1
 wetext==0.1.2
 python-dotenv==1.2.1
 transformers>=4.51.3
-hdbscan==0.8.40
+hdbscan>=0.8.41
 
 # Fun-ASR-Nano
 # torch and torchaudio are provided by base image (pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime)
