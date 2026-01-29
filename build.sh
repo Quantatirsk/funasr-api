@@ -59,7 +59,7 @@ FunASR-API Docker 镜像构建脚本
     -e, --export          导出为 tar.gz 文件
     -o, --output DIR      导出目录 (默认: 当前目录)
     -r, --registry REG    镜像仓库 (默认: quantatrisk)
-    -n, --no-cache        不使用缓存，强制重新下载依赖
+    -n, --no-cache        不使用缓存，强制重新安装依赖
     -y, --yes             跳过交互确认
     -h, --help            显示帮助
 
@@ -74,7 +74,12 @@ FunASR-API Docker 镜像构建脚本
 
 注意:
     GPU 多架构构建 (-a multi) 需要推送 (-p)，因为使用了不同的 Dockerfile
-    AMD64 使用 Dockerfile.gpu, ARM64 使用 Dockerfile.gpu.arm64
+    AMD64 使用 Dockerfile.gpu.amd64, ARM64 使用 Dockerfile.gpu.arm64
+
+    模型文件不包含在镜像中，需要通过 Volume 挂载:
+    1. 运行 python scripts/download_models.py 下载模型
+    2. 使用 docker-compose.yml 或添加 -v ./models:/root/.cache/modelscope
+    详见: MODEL_SETUP.md
 
 EOF
 }
@@ -208,7 +213,7 @@ interactive_config() {
 
     # 是否使用缓存
     header "步骤 6/6: 构建缓存"
-    local cache_opts=("使用缓存 (更快)" "不使用缓存 (强制重新下载依赖)")
+    local cache_opts=("使用缓存 (更快)" "不使用缓存 (强制重新安装依赖)")
     local cache_idx=$(simple_select "选择构建缓存策略:" "${cache_opts[@]}")
     [ $cache_idx -eq 1 ] && NO_CACHE="true"
 
@@ -220,7 +225,7 @@ interactive_config() {
     echo -e "  镜像仓库:   ${CYAN}${REGISTRY}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
-    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
+    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新安装)" || echo "是")${NC}"
 
     # 多架构 GPU 构建警告
     if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]] && [[ "$PLATFORM" == *","* ]] && [ "$PUSH" != "true" ]; then
@@ -269,7 +274,7 @@ build_cpu() {
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
         build_args="$build_args --no-cache"
-        info "已启用 --no-cache，将强制重新下载所有依赖"
+        info "已启用 --no-cache，将强制重新安装所有依赖"
     fi
 
     # 多架构只能 push
@@ -542,7 +547,7 @@ main() {
     echo -e "  版本标签:   ${CYAN}${VERSION}${NC}"
     echo -e "  推送镜像:   ${CYAN}$([ "$PUSH" = "true" ] && echo "是" || echo "否")${NC}"
     echo -e "  导出tar.gz: ${CYAN}$([ "$EXPORT_TAR" = "true" ] && echo "是 → ${EXPORT_DIR}" || echo "否")${NC}"
-    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新下载)" || echo "是")${NC}"
+    echo -e "  使用缓存:   ${CYAN}$([ "$NO_CACHE" = "true" ] && echo "否 (强制重新安装)" || echo "是")${NC}"
 
     # 显示 Dockerfile 信息
     if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]]; then
