@@ -15,7 +15,7 @@ httpx==0.28.1
 
 wetext==0.1.2
 python-dotenv==1.2.1
-transformers>=4.50.3
+transformers>=4.51.3
 hdbscan==0.8.40
 
 # Fun-ASR-Nano
