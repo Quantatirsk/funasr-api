@@ -78,6 +78,9 @@ class Settings:
     # 分段识别并发配置
     ASR_SEGMENT_CONCURRENCY: int = 4  # 分段识别并发数，建议 2-4（根据 GPU 内存调整）
 
+    # 批处理推理配置
+    ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8（GPU 真并行）
+
     def __init__(self):
         """从环境变量读取配置"""
         self._load_from_env()
@@ -142,6 +145,10 @@ class Settings:
 
         self.ASR_SEGMENT_CONCURRENCY = int(
             os.getenv("ASR_SEGMENT_CONCURRENCY", str(self.ASR_SEGMENT_CONCURRENCY))
+        )
+
+        self.ASR_BATCH_SIZE = int(
+            os.getenv("ASR_BATCH_SIZE", str(self.ASR_BATCH_SIZE))
         )
 
     def _parse_size(self, size_str: str) -> int:

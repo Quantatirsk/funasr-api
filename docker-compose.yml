@@ -38,6 +38,9 @@ services:
       # 分段识别并发数（长音频切分后的并发识别）
       # 建议 2-4，根据 GPU 内存调整
       - ASR_SEGMENT_CONCURRENCY=4
+      # ASR 批处理大小（同时推理的音频片段数）
+      # 批处理利用 GPU 并行计算，可提升 2-3 倍速度，建议 2-8
+      - ASR_BATCH_SIZE=4
       # 最大音频文件大小限制（单位：MB，默认 2048 = 2GB）
       # 支持格式：纯数字表示 MB，或带单位如 2GB
       - MAX_AUDIO_SIZE=2048

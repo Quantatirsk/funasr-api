@@ -19,7 +19,7 @@ from ..core.exceptions import DefaultServerErrorException
 
 logger = logging.getLogger(__name__)
 
-# 全局 CAM++ pipeline 缓存
+# 全局 CAM++ pipeline 缓存（单例）
 _global_diarization_pipeline = None
 _diarization_pipeline_lock = threading.Lock()
 
