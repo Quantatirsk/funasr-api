@@ -1,7 +1,7 @@
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
 python-multipart==0.0.22
-funasr==1.3.1
+funasr==1.3.0
 requests==2.32.5
 modelscope[framework]==1.34.0
 soundfile==0.13.1
@@ -15,8 +15,6 @@ httpx==0.28.1
 # 注意：GPU版本在Dockerfile中安装PyTorch (2.3.1+CUDA)
 # torch已从requirements中移除，避免重复安装
 wetext==0.1.2
-# ctc-segmentation==1.7.4
-torchaudio>=2.9.0
 python-dotenv==1.2.1
 transformers==4.51.0
 hdbscan==0.8.40
