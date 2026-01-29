@@ -75,11 +75,8 @@ class Settings:
     # 音频处理配置
     MAX_AUDIO_SIZE: int = 2048 * 1024 * 1024  # 2GB
 
-    # 分段识别并发配置
-    ASR_SEGMENT_CONCURRENCY: int = 4  # 分段识别并发数，建议 2-4（根据 GPU 内存调整）
-
-    # 批处理推理配置
-    ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8（GPU 真并行）
+    # 批处理推理配置（GPU 真并行）
+    ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
     def __init__(self):
         """从环境变量读取配置"""
@@ -142,10 +139,6 @@ class Settings:
         max_audio_size_str = os.getenv("MAX_AUDIO_SIZE")
         if max_audio_size_str:
             self.MAX_AUDIO_SIZE = self._parse_size(max_audio_size_str)
-
-        self.ASR_SEGMENT_CONCURRENCY = int(
-            os.getenv("ASR_SEGMENT_CONCURRENCY", str(self.ASR_SEGMENT_CONCURRENCY))
-        )
 
         self.ASR_BATCH_SIZE = int(
             os.getenv("ASR_BATCH_SIZE", str(self.ASR_BATCH_SIZE))

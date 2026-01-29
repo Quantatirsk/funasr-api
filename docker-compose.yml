@@ -35,9 +35,6 @@ services:
       # 推理线程池大小决定"同时跑推理的数量"，其余请求会在队列中等待
       # 建议从 2~4 开始逐步调参
       - INFERENCE_THREAD_POOL_SIZE=4
-      # 分段识别并发数（长音频切分后的并发识别）
-      # 建议 2-4，根据 GPU 内存调整
-      - ASR_SEGMENT_CONCURRENCY=4
       # ASR 批处理大小（同时推理的音频片段数）
       # 批处理利用 GPU 并行计算，可提升 2-3 倍速度，建议 2-8
       - ASR_BATCH_SIZE=4
