@@ -5,7 +5,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    MODELSCOPE_CACHE=/root/.cache/modelscope
+    MODELSCOPE_CACHE=/root/.cache/modelscope \
+    PIP_BREAK_SYSTEM_PACKAGES=1
 
 # Install system packages required for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
