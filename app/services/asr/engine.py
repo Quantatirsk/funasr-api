@@ -283,9 +283,6 @@ class BaseASREngine(ABC):
                 except Exception as e:
                     logger.error(f"批次推理失败: {e}, 跳过该批次")
 
-                except Exception as e:
-                    logger.error(f"批次推理失败: {e}, 跳过该批次")
-
             # 清理临时文件
             try:
                 if enable_speaker_diarization and speaker_segments:
