@@ -207,7 +207,7 @@ async def list_models(request: Request):
 `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`, `flac`, `ogg`, `amr`, `pcm`
 
 **文件大小限制：**
-- 最大支持 2048MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
+- 最大支持 {settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
 - OpenAI 原生限制为 25MB
 
 **说话人分离：**
@@ -248,7 +248,7 @@ async def list_models(request: Request):
             "description": "请求错误",
             "content": {
                 "application/json": {
-                    "example": {"detail": "File too large. Maximum size is 300MB"}
+                                    "example": {"detail": f"File too large. Maximum size is {settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB"}
                 }
             },
         },

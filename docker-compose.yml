@@ -37,6 +37,9 @@ services:
       # 分段识别并发数（长音频切分后的并发识别）
       # 建议 2-4，根据 GPU 内存调整
       - ASR_SEGMENT_CONCURRENCY=4
+      # 最大音频文件大小限制（单位：MB，默认 2048 = 2GB）
+      # 支持格式：纯数字表示 MB，或带单位如 2GB
+      - MAX_AUDIO_SIZE=2048
     restart: unless-stopped
     networks:
       - funasr-net
