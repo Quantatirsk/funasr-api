@@ -56,16 +56,13 @@ class Settings:
         ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: fun-asr-nano）
     )
     VAD_MODEL: str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-    VAD_MODEL_REVISION: str = "v2.0.4"  # 与预下载版本一致
     PUNC_MODEL: str = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
-    PUNC_MODEL_REVISION: str = "v2.0.4"
     PUNC_REALTIME_MODEL: str = (
         "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727"
     )
 
     # 语言模型配置
     LM_MODEL: str = "iic/speech_ngram_lm_zh-cn-ai-wesp-fst"
-    LM_MODEL_REVISION: str = "v2.0.4"
     LM_WEIGHT: float = 0.15  # 语言模型权重，建议范围 0.1-0.3
     LM_BEAM_SIZE: int = 10  # 语言模型解码 beam size
     ASR_ENABLE_LM: bool = True  # 是否启用语言模型（默认启用）

@@ -185,9 +185,7 @@ class ModelManager:
                 realtime_model_path=config.realtime_model_path,
                 device=settings.DEVICE,
                 vad_model=settings.VAD_MODEL,
-                vad_model_revision=settings.VAD_MODEL_REVISION,
                 punc_model=settings.PUNC_MODEL,
-                punc_model_revision=settings.PUNC_MODEL_REVISION,
                 punc_realtime_model=settings.PUNC_REALTIME_MODEL,
                 extra_model_kwargs=config.extra_kwargs,
             )

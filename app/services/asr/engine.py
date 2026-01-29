@@ -387,9 +387,7 @@ class FunASREngine(RealTimeASREngine):
         realtime_model_path: Optional[str] = None,
         device: str = "auto",
         vad_model: Optional[str] = None,
-        vad_model_revision: str = "v2.0.4",
         punc_model: Optional[str] = None,
-        punc_model_revision: str = "v2.0.4",
         punc_realtime_model: Optional[str] = None,
         enable_lm: bool = True,
         extra_model_kwargs: Optional[Dict[str, Any]] = None,
@@ -406,9 +404,7 @@ class FunASREngine(RealTimeASREngine):
 
         # 辅助模型配置
         self.vad_model = vad_model or settings.VAD_MODEL
-        self.vad_model_revision = vad_model_revision
         self.punc_model = punc_model or settings.PUNC_MODEL
-        self.punc_model_revision = punc_model_revision
         self.punc_realtime_model = punc_realtime_model or settings.PUNC_REALTIME_MODEL
 
         # 语言模型配置
