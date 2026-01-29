@@ -73,7 +73,7 @@ FunASR-API Docker 镜像构建脚本
     ./build.sh -t gpu -n                # 不使用缓存构建 GPU 版本
 
 注意:
-    GPU 版本仅支持 AMD64 架构 (Dockerfile.gpu.amd64)
+    GPU 版本仅支持 AMD64 架构 (Dockerfile.gpu)
     CPU 版本支持 AMD64 和 ARM64 多架构
 
     模型文件不包含在镜像中，需要通过 Volume 挂载:
@@ -317,7 +317,7 @@ build_gpu_single() {
 
     info "构建 GPU AMD64 版本: $tag"
 
-    local build_args="--platform linux/amd64 -t $tag -f Dockerfile.gpu.amd64"
+    local build_args="--platform linux/amd64 -t $tag -f Dockerfile.gpu"
 
     # 添加 --no-cache 参数
     if [ "$NO_CACHE" = "true" ]; then
@@ -456,7 +456,7 @@ main() {
 
     # 显示 Dockerfile 信息
     if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]]; then
-        echo -e "  GPU Dockerfile: ${CYAN}Dockerfile.gpu.amd64 (仅支持 AMD64)${NC}"
+        echo -e "  GPU Dockerfile: ${CYAN}Dockerfile.gpu (仅支持 AMD64)${NC}"
     fi
     if [[ "$BUILD_TYPE" == "cpu" || "$BUILD_TYPE" == "all" ]]; then
         echo -e "  CPU Dockerfile: ${CYAN}Dockerfile.cpu${NC}"
