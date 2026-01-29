@@ -65,13 +65,18 @@ class FunASRNanoModelLoader(BaseModelLoader):
         return model_id
 
     def _setup_local_code_path(self) -> None:
-        """设置本地代码路径，使 Python 能导入 model.py"""
-        local_code_path = str(self.LOCAL_CODE_DIR)
-        logger.info(f"Fun-ASR-Nano 使用本地代码: {local_code_path}")
+        """设置本地代码路径，使 Python 能导入 model.py
 
-        if local_code_path not in sys.path:
-            sys.path.insert(0, local_code_path)
-            logger.info(f"已将本地代码目录添加到 sys.path: {local_code_path}")
+        将 app/services/asr 目录添加到 sys.path，这样可以通过
+        'implementations.funasrnano.model' 导入模块，保持包结构
+        """
+        # 添加 app/services/asr 目录（implementations 的父目录）
+        asr_root = str(self.LOCAL_CODE_DIR.parent.parent)
+        logger.info(f"Fun-ASR-Nano 使用本地代码: {self.LOCAL_CODE_DIR}")
+
+        if asr_root not in sys.path:
+            sys.path.insert(0, asr_root)
+            logger.info(f"已将 ASR 根目录添加到 sys.path: {asr_root}")
 
     def load(self) -> AutoModel:
         """加载 Fun-ASR-Nano 模型"""
@@ -85,7 +90,7 @@ class FunASRNanoModelLoader(BaseModelLoader):
             model_kwargs = {
                 "model": resolved_path,
                 "device": self.device,
-                "trust_remote_code": True,
+                "trust_remote_code": "implementations.funasrnano.model",  # 使用包路径
                 "disable_update": True,
                 "disable_pbar": True,
                 "disable_log": True,
