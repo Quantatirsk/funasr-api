@@ -15,7 +15,7 @@ httpx==0.28.1
 # 注意：GPU版本在Dockerfile中安装PyTorch (2.3.1+CUDA)
 # torch和torchaudio已从requirements中移除，避免重复安装
 wetext==0.1.2
-ctc-forced-aligner
+ctcdecode
 python-dotenv==1.2.1
 transformers==4.51.0
 hdbscan==0.8.40
