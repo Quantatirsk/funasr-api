@@ -138,12 +138,38 @@ class Settings:
         )
 
         # 音频处理配置
-        self.MAX_AUDIO_SIZE = int(
-            os.getenv("MAX_AUDIO_SIZE", str(self.MAX_AUDIO_SIZE))
-        )
+        # 支持简化格式：纯数字表示MB，或带单位（如 2048MB, 2GB）
+        max_audio_size_str = os.getenv("MAX_AUDIO_SIZE")
+        if max_audio_size_str:
+            self.MAX_AUDIO_SIZE = self._parse_size(max_audio_size_str)
+
         self.ASR_SEGMENT_CONCURRENCY = int(
             os.getenv("ASR_SEGMENT_CONCURRENCY", str(self.ASR_SEGMENT_CONCURRENCY))
         )
+
+    def _parse_size(self, size_str: str) -> int:
+        """解析带单位的大小字符串
+
+        支持格式：
+        - 纯数字：视为 MB（如 2048 = 2048MB = 2147483648 bytes）
+        - 带单位：如 2GB, 2048MB, 1.5GB
+        """
+        size_str = size_str.strip().upper()
+
+        # 如果纯数字，视为 MB
+        if size_str.isdigit():
+            return int(size_str) * 1024 * 1024
+
+        # 带单位的处理
+        if size_str.endswith('GB'):
+            return int(float(size_str[:-2]) * 1024 * 1024 * 1024)
+        elif size_str.endswith('MB'):
+            return int(float(size_str[:-2]) * 1024 * 1024)
+        elif size_str.endswith('KB'):
+            return int(float(size_str[:-2]) * 1024)
+        else:
+            # 默认视为字节
+            return int(size_str)
 
     def _ensure_directories(self):
         """确保必需的目录存在"""
