@@ -33,8 +33,7 @@
                 "offline": "FunAudioLLM/Fun-ASR-Nano-2512"
             },
             "extra_kwargs": {
-                "trust_remote_code": true,
-                "remote_code": "./model.py"
+                "trust_remote_code": true
             }
         }
     }

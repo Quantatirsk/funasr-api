@@ -7,7 +7,6 @@
 
 import os
 import sys
-import urllib.request
 
 # 设置环境变量，避免不必要的输出
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "0"  # 下载时显示进度
@@ -26,39 +25,6 @@ if "MODELSCOPE_CACHE" not in os.environ:
 #     "model_id": "v1.0.0",
 # }
 MODEL_REVISIONS = {}
-
-# 需要额外下载远程代码的模型（ModelScope 不包含 model.py）
-REMOTE_CODE_MODELS = {
-    "FunAudioLLM/Fun-ASR-Nano-2512": {
-        "url": "https://raw.githubusercontent.com/FunAudioLLM/Fun-ASR/main/model.py",
-        "filename": "model.py",
-    }
-}
-
-
-def download_remote_code(model_id: str, model_path: str) -> bool:
-    """下载模型的远程代码文件（如 model.py）"""
-    if model_id not in REMOTE_CODE_MODELS:
-        return True
-
-    config = REMOTE_CODE_MODELS[model_id]
-    url = config["url"]
-    filename = config["filename"]
-    target_path = os.path.join(model_path, filename)
-
-    # 如果文件已存在，跳过下载
-    if os.path.exists(target_path):
-        print(f"    ℹ️  {filename} 已存在，跳过下载")
-        return True
-
-    print(f"    📥 下载远程代码: {filename}")
-    try:
-        urllib.request.urlretrieve(url, target_path)
-        print(f"    ✅ 远程代码下载完成: {target_path}")
-        return True
-    except Exception as e:
-        print(f"    ❌ 远程代码下载失败: {e}")
-        return False
 
 
 def check_model_exists(model_id: str, cache_dir: str) -> tuple[bool, str]:
@@ -144,10 +110,6 @@ def download_models():
         if exists:
             print(f"    ⏭️  已存在，跳过下载: {existing_path}")
             skipped.append(model_id)
-
-            # 仍然检查远程代码
-            if not download_remote_code(model_id, existing_path):
-                failed.append((model_id, "远程代码下载失败"))
             continue
 
         # 模型不存在，开始下载
@@ -167,10 +129,6 @@ def download_models():
                 path = snapshot_download(model_id)
             print(f"    ✅ 下载完成: {path}")
             downloaded.append(model_id)
-
-            # 下载远程代码（如果需要）
-            if not download_remote_code(model_id, path):
-                failed.append((model_id, "远程代码下载失败"))
         except Exception as e:
             print(f"    ❌ 下载失败: {e}")
             failed.append((model_id, str(e)))

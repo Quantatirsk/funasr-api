@@ -12,9 +12,17 @@ addict==2.4.0
 datasets==3.6.0
 scipy==1.15.3
 httpx==0.28.1
-torch>=2.9.0
-torchaudio>=2.9.0
+
 wetext==0.1.2
 python-dotenv==1.2.1
-transformers>=4.51.3
+transformers>=4.50.3
 hdbscan==0.8.40
+
+# Fun-ASR-Nano
+torch>=2.9.0
+torchaudio>=2.9.0
+zhconv
+whisper_normalizer
+openai-whisper
+compute-wer
+pyopenjtalk-plus
