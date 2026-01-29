@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         sox \
         libsox-dev \
         libsndfile1 \
-        build-essential
+        build-essential \
+        curl
 
 WORKDIR /app
 
@@ -24,12 +25,17 @@ RUN pip install --no-cache-dir --upgrade pip \
         torch==2.3.1 \
         torchaudio==2.3.1
 
+# Install Rust compiler (required for sudachipy on ARM64)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Clean apt packages and cache
-RUN apt remove -y build-essential && apt autoremove -y \
+# Clean build tools and cache to reduce image size
+RUN apt remove -y build-essential curl && apt autoremove -y \
+    && rm -rf /root/.cargo /root/.rustup \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
