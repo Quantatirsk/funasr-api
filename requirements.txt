@@ -19,8 +19,7 @@ transformers>=4.51.3
 hdbscan==0.8.40
 
 # Fun-ASR-Nano
-torch>=2.9.0
-torchaudio>=2.9.0
+# torch and torchaudio are provided by base image (pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime)
 zhconv
 whisper_normalizer
 openai-whisper
