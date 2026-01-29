@@ -175,13 +175,21 @@ interactive_config() {
 
     # 选择架构
     header "步骤 2/5: 选择目标架构"
-    local archs=("amd64 (x86_64, 常见服务器/PC)" "arm64 (Apple Silicon, ARM 服务器)" "多架构 (amd64 + arm64)")
-    local arch_idx=$(simple_select "选择目标架构:" "${archs[@]}")
-    case $arch_idx in
-        0) PLATFORM="linux/amd64" ;;
-        1) PLATFORM="linux/arm64" ;;
-        2) PLATFORM="linux/amd64,linux/arm64" ;;
-    esac
+    if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]]; then
+        # GPU 版本仅支持 AMD64
+        echo -e "${YELLOW}注意: GPU 版本仅支持 AMD64 架构${NC}"
+        PLATFORM="linux/amd64"
+        echo -e "已自动选择: ${GREEN}amd64 (x86_64)${NC}"
+    else
+        # CPU 版本支持多架构
+        local archs=("amd64 (x86_64, 常见服务器/PC)" "arm64 (Apple Silicon, ARM 服务器)" "多架构 (amd64 + arm64)")
+        local arch_idx=$(simple_select "选择目标架构:" "${archs[@]}")
+        case $arch_idx in
+            0) PLATFORM="linux/amd64" ;;
+            1) PLATFORM="linux/arm64" ;;
+            2) PLATFORM="linux/amd64,linux/arm64" ;;
+        esac
+    fi
 
     # 输入版本号
     header "步骤 3/5: 设置版本标签"
