@@ -158,6 +158,17 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                 },
                 "description": "是否启用说话人分离。启用后响应会包含 speaker_id 字段",
             },
+            {
+                "name": "word_timestamps",
+                "in": "query",
+                "required": False,
+                "schema": {
+                    "type": "boolean",
+                    "default": False,
+                    "example": False,
+                },
+                "description": "是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）",
+            },
             # 5. 增强选项
             {
                 "name": "vocabulary_id",
