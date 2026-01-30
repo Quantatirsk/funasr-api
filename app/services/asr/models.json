@@ -64,6 +64,7 @@
             },
             "extra_kwargs": {
                 "gpu_memory_utilization": 0.6,
+                "max_model_len": 32768,
                 "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
                 "max_inference_batch_size": 32,
                 "max_new_tokens": 1024
