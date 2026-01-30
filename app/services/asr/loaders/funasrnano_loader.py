@@ -86,11 +86,14 @@ class FunASRNanoModelLoader(BaseModelLoader):
             resolved_path = self._resolve_model_path(self.model_path)
             logger.info(f"正在加载 Fun-ASR-Nano 模型: {resolved_path}")
 
-            # 先导入模型类，确保注册到 FunASR tables
+            # 动态导入模型类，确保注册到 FunASR tables
+            # 必须在 _setup_local_code_path 之后执行
             try:
-                from funasrnano.model import FunASRNano  # type: ignore  # 运行时动态导入
+                import importlib
 
-                logger.debug(f"FunASRNano 类已导入并注册: {FunASRNano}")
+                funasrnano_module = importlib.import_module("funasrnano.model")
+                FunASRNano = getattr(funasrnano_module, "FunASRNano")
+                logger.debug(f"FunASRNano 类已动态导入并注册: {FunASRNano}")
             except ImportError as e:
                 logger.warning(f"预导入 FunASRNano 失败（可能不影响加载）: {e}")
 
