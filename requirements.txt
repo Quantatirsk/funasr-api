@@ -17,6 +17,7 @@ wetext==0.1.2
 python-dotenv==1.2.1
 transformers>=4.51.3
 hdbscan>=0.8.41
+loguru>=0.7.2
 
 # Qwen3-ASR
 # 使用 vLLM 后端需要安装 qwen-asr[vllm]

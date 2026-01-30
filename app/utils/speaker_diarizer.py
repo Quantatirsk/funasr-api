@@ -4,7 +4,7 @@
 基于 CAM++ 的说话人分离，用于多说话人音频分割
 """
 
-import logging
+from loguru import logger
 import numpy as np
 import librosa
 import soundfile as sf
@@ -16,8 +16,6 @@ from dataclasses import dataclass
 
 from ..core.config import settings
 from ..core.exceptions import DefaultServerErrorException
-
-logger = logging.getLogger(__name__)
 
 # 全局 CAM++ pipeline 缓存（单例）
 _global_diarization_pipeline = None
@@ -135,6 +133,12 @@ class SpeakerDiarizer:
                         logger.warning(f"跳过格式错误的片段: {seg}, 错误: {e}")
 
             logger.info(f"说话人分离完成，原始片段数: {len(segments)}")
+            # 诊断日志：打印前20个原始片段
+            for i, seg in enumerate(segments[:20]):
+                logger.debug(
+                    f"[CAM++原始] #{i}: {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
+                    f"({seg.duration_sec:.2f}s) {seg.speaker_id}"
+                )
             return segments
 
         except Exception as e:
@@ -164,6 +168,10 @@ class SpeakerDiarizer:
                 current.end_ms = max(current.end_ms, seg.end_ms)
             else:
                 # 不同说话人，保存当前段，开始新段
+                logger.debug(
+                    f"[合并中断] 说话人切换: {current.speaker_id} → {seg.speaker_id} "
+                    f"在 {seg.start_sec:.2f}s，保存片段 {current.start_sec:.2f}-{current.end_sec:.2f}s"
+                )
                 merged.append(current)
                 current = SpeakerSegment(
                     start_ms=seg.start_ms,
@@ -175,6 +183,12 @@ class SpeakerDiarizer:
         merged.append(current)
 
         logger.info(f"合并同一说话人连续片段: {len(segments)} → {len(merged)}")
+        # 诊断日志：打印合并后的前20个片段
+        for i, seg in enumerate(merged[:20]):
+            logger.debug(
+                f"[合并后] #{i}: {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
+                f"({seg.duration_sec:.2f}s) {seg.speaker_id}"
+            )
         return merged
 
     def split_long_segments(
@@ -198,10 +212,18 @@ class SpeakerDiarizer:
         for seg in segments:
             # 核心优化：先尝试和result中最后一个片段合并
             if self._try_merge_with_last(result, seg):
+                logger.debug(
+                    f"[贪婪合并成功] {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
+                    f"合并到前一个片段，新范围: {result[-1].start_sec:.2f}-{result[-1].end_sec:.2f}s"
+                )
                 continue  # 合并成功，处理下一个片段
 
             # 不能合并，检查是否需要切分
             if seg.duration_ms <= self.max_segment_ms:
+                logger.debug(
+                    f"[直接添加] {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
+                    f"({seg.duration_sec:.2f}s) {seg.speaker_id}"
+                )
                 result.append(seg)
             else:
                 # 使用 VAD 智能切分
@@ -221,12 +243,21 @@ class SpeakerDiarizer:
                     ]
 
                     if seg_vad_segments:
+                        logger.debug(f"[VAD过滤] 找到 {len(seg_vad_segments)} 个VAD段")
                         # 直接使用 VAD 边界，贪婪合并确保不超过最大时长
                         sub_segments = self._merge_vad_for_speaker(
                             seg_vad_segments, seg.start_ms, seg.end_ms, seg.speaker_id
                         )
+                        logger.info(
+                            f"[VAD切分] {seg.speaker_id} "
+                            f"{seg.start_sec:.2f}-{seg.end_sec:.2f}s → {len(sub_segments)} 个子片段"
+                        )
                         # 逐个添加子片段，尝试与前一个片段合并
-                        for sub_seg in sub_segments:
+                        for i, sub_seg in enumerate(sub_segments):
+                            logger.debug(
+                                f"  子片段{i}: {sub_seg.start_sec:.2f}-{sub_seg.end_sec:.2f}s "
+                                f"({sub_seg.duration_sec:.2f}s)"
+                            )
                             if not self._try_merge_with_last(result, sub_seg):
                                 result.append(sub_seg)
                     else:
@@ -245,6 +276,12 @@ class SpeakerDiarizer:
                             result.append(sub_seg)
 
         logger.info(f"切分并合并完成: {len(segments)} → {len(result)}")
+        # 诊断日志：打印最终的前30个片段
+        for i, seg in enumerate(result[:30]):
+            logger.info(
+                f"[最终片段] #{i}: {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
+                f"({seg.duration_sec:.2f}s) {seg.speaker_id}"
+            )
         return result
 
     def _try_merge_with_last(
@@ -268,17 +305,25 @@ class SpeakerDiarizer:
 
         # 必须是同一说话人
         if last.speaker_id != seg.speaker_id:
+            logger.debug(
+                f"[合并失败-说话人] {last.speaker_id} != {seg.speaker_id} "
+                f"at {seg.start_sec:.2f}s"
+            )
             return False
 
         # 检查合并后是否超过最大时长
         merged_duration_ms = seg.end_ms - last.start_ms
         if merged_duration_ms > self.max_segment_ms:
+            logger.debug(
+                f"[合并失败-超时] {last.start_sec:.2f}-{seg.end_sec:.2f}s = "
+                f"{merged_duration_ms/1000:.2f}s > {self.max_segment_sec}s"
+            )
             return False
 
         # 可以合并，直接扩展最后一个片段的结束时间
         last.end_ms = seg.end_ms
         logger.debug(
-            f"贪婪合并: {last.speaker_id} "
+            f"[合并成功] {last.speaker_id} "
             f"{last.start_ms}-{last.end_ms}ms ({merged_duration_ms/1000:.2f}s)"
         )
         return True
