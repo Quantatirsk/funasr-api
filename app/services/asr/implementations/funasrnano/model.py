@@ -5,7 +5,7 @@ import re
 import string
 import time
 import traceback
-from typing import Union
+from typing import List, Union
 
 import torch
 import torch.nn as nn
@@ -17,13 +17,9 @@ from funasr.utils.datadir_writer import DatadirWriter
 from funasr.utils.load_utils import extract_fbank, load_audio_text_image_video
 from transformers import AutoConfig, AutoModelForCausalLM
 
-# 尝试相对导入，失败则使用绝对导入
-try:
-    from .ctc import CTC
-    from .tools.utils import forced_align
-except ImportError:
-    from ctc import CTC
-    from tools.utils import forced_align
+# 导入本地模块
+from .ctc import CTC
+from .tools.utils import forced_align
 
 dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
@@ -552,7 +548,7 @@ class FunASRNano(nn.Module):
                     speech_idx += 1
         return inputs_embeds, contents, batch, source_ids, meta_data
 
-    def get_prompt(self, hotwords: list[str], language: str = None, itn: bool = True):
+    def get_prompt(self, hotwords: List[str], language: str = None, itn: bool = True):
         if len(hotwords) > 0:
             hotwords = ", ".join(hotwords)
             prompt = f"请结合上下文信息，更加准确地完成语音转写任务。如果没有相关信息，我们会留空。\n\n\n**上下文信息：**\n\n\n"
