@@ -251,7 +251,27 @@ class SpeakerDiarizer:
 
             i = j
 
-        return merged
+        # 第二层：合并连续的同说话人片段（只要加起来 <= 20s）
+        final_merged = []
+        for seg in merged:
+            if not final_merged:
+                final_merged.append(seg)
+                continue
+
+            last = final_merged[-1]
+            # 检查是否同一说话人且加起来 <= 20s
+            combined_duration = (seg.end_ms - last.start_ms) / 1000.0
+            if last.speaker_id == seg.speaker_id and combined_duration <= 20.0:
+                # 合并到上一个片段
+                last.end_ms = seg.end_ms
+                logger.debug(
+                    f"[连续合并] {last.speaker_id}: "
+                    f"{last.start_sec:.2f}-{seg.end_sec:.2f}s ({combined_duration:.1f}s)"
+                )
+            else:
+                final_merged.append(seg)
+
+        return final_merged
 
     def split_long_segments(
         self,
