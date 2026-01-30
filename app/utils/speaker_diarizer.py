@@ -196,9 +196,7 @@ class SpeakerDiarizer:
     ) -> List[SpeakerSegment]:
         """智能合并短片段
 
-        策略：
-        1. 如果当前片段 < 10秒，且与下一个是同一说话人 → 合并到下一个
-        2. 如果是某说话人的最后一个片段且 < 10秒 → 不处理（保持原样）
+        策略：累积合并同说话人片段，只要总时长 <= 20s
         """
         if not segments:
             return []
@@ -206,32 +204,26 @@ class SpeakerDiarizer:
         # 按开始时间排序
         sorted_segments = sorted(segments, key=lambda x: x.start_ms)
         merged = []
-        skip_indices = set()
-
         i = 0
+
         while i < len(sorted_segments):
             seg = sorted_segments[i]
-
-            # 如果当前片段 >= 10s，直接添加
-            if seg.duration_sec >= 10.0:
-                merged.append(seg)
-                i += 1
-                continue
-
-            # 当前片段 < 10s，开始累积合并
             current_start_ms = seg.start_ms
             current_end_ms = seg.end_ms
             current_duration_sec = seg.duration_sec
             j = i + 1
 
-            # 只要 < 10s 就继续合并后续同说话人片段
-            while j < len(sorted_segments) and current_duration_sec < 10.0:
+            # 累积合并，只要 <= 20s 且同说话人
+            while j < len(sorted_segments):
                 next_seg = sorted_segments[j]
                 if next_seg.speaker_id != seg.speaker_id:
                     break
-                # 合并
+                new_duration = (next_seg.end_ms - current_start_ms) / 1000.0
+                if new_duration > 20.0:
+                    break
+                # 可以合并
                 current_end_ms = next_seg.end_ms
-                current_duration_sec = (current_end_ms - current_start_ms) / 1000.0
+                current_duration_sec = new_duration
                 j += 1
 
             # 创建合并后的片段
@@ -244,34 +236,14 @@ class SpeakerDiarizer:
 
             if j > i + 1:
                 logger.debug(
-                    f"[短片段合并] 从 {seg.start_sec:.2f}s 开始，"
+                    f"[合并] {seg.speaker_id}: "
                     f"合并了 {j - i} 个片段，"
-                    f"结果: {merged_seg.start_sec:.2f}-{merged_seg.end_sec:.2f}s ({merged_seg.duration_sec:.1f}s)"
+                    f"结果 {merged_seg.start_sec:.2f}-{merged_seg.end_sec:.2f}s ({merged_seg.duration_sec:.1f}s)"
                 )
 
             i = j
 
-        # 第二层：合并连续的同说话人片段（只要加起来 <= 20s）
-        final_merged = []
-        for seg in merged:
-            if not final_merged:
-                final_merged.append(seg)
-                continue
-
-            last = final_merged[-1]
-            # 检查是否同一说话人且加起来 <= 20s
-            combined_duration = (seg.end_ms - last.start_ms) / 1000.0
-            if last.speaker_id == seg.speaker_id and combined_duration <= 20.0:
-                # 合并到上一个片段
-                last.end_ms = seg.end_ms
-                logger.debug(
-                    f"[连续合并] {last.speaker_id}: "
-                    f"{last.start_sec:.2f}-{seg.end_sec:.2f}s ({combined_duration:.1f}s)"
-                )
-            else:
-                final_merged.append(seg)
-
-        return final_merged
+        return merged
 
     def split_long_segments(
         self,
