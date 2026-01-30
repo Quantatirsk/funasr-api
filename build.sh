@@ -67,7 +67,7 @@ FunASR-API Docker 镜像构建脚本
     ./build.sh                          # 交互式构建
     ./build.sh -t gpu -a amd64          # 构建 GPU 版本 (仅支持 amd64)
     ./build.sh -t cpu -a arm64          # 构建 CPU 版本 (arm64)
-    ./build.sh -t cpu -a multi -p       # 构建 CPU 多架构并推送
+    ./build.sh -t cpu -a multi -p       # 构建 CPU 多架构并推送 (相同tag支持多架构)
     ./build.sh -t all -a amd64 -p       # 构建所有版本 (amd64) 并推送
     ./build.sh -t gpu -a amd64 -e       # 构建并导出为 tar.gz
     ./build.sh -t gpu -n                # 不使用缓存构建 GPU 版本
@@ -75,6 +75,11 @@ FunASR-API Docker 镜像构建脚本
 注意:
     GPU 版本仅支持 AMD64 架构 (Dockerfile.gpu)
     CPU 版本支持 AMD64 和 ARM64 多架构
+
+    多架构推送说明:
+    - 使用 -a multi -p 推送时，相同 tag 会包含 AMD64 和 ARM64 两种架构
+    - Docker 会根据运行环境的架构自动拉取对应的镜像
+    - 查看镜像支持的架构: docker manifest inspect <镜像tag>
 
     模型文件不包含在镜像中，需要通过 Volume 挂载:
     1. 运行 python scripts/download_models.py 下载模型
@@ -250,10 +255,10 @@ check_buildx() {
         error "需要 Docker Buildx 支持多架构构建，请先安装"
     fi
 
-    # 检查/创建 builder
+    # 检查/创建 builder（使用 docker-container 驱动支持多架构推送）
     if ! docker buildx inspect funasr-builder &> /dev/null; then
-        info "创建 buildx builder..."
-        docker buildx create --name funasr-builder --use
+        info "创建 buildx builder (docker-container 驱动)..."
+        docker buildx create --name funasr-builder --driver docker-container --use
     else
         docker buildx use funasr-builder
     fi
@@ -494,6 +499,22 @@ main() {
     if [ "$PUSH" != "true" ] && [ "$EXPORT_TAR" != "true" ] && [[ "$PLATFORM" != *","* ]]; then
         info "已构建的镜像:"
         docker images | grep "${REGISTRY}/${IMAGE_NAME}" | head -10
+    fi
+
+    # 显示推送的多架构镜像信息
+    if [ "$PUSH" = "true" ]; then
+        echo ""
+        info "推送的多架构镜像信息:"
+        if [[ "$BUILD_TYPE" == "cpu" || "$BUILD_TYPE" == "all" ]]; then
+            local cpu_tag="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+            [ "$VERSION" = "latest" ] && cpu_tag="${REGISTRY}/${IMAGE_NAME}:latest"
+            echo "  CPU 镜像: ${CYAN}${cpu_tag}${NC}"
+            echo "  查看架构: docker manifest inspect ${cpu_tag} | grep architecture"
+        fi
+        if [[ "$BUILD_TYPE" == "gpu" || "$BUILD_TYPE" == "all" ]]; then
+            local gpu_tag="${REGISTRY}/${IMAGE_NAME}:gpu-${VERSION}"
+            echo "  GPU 镜像: ${CYAN}${gpu_tag}${NC} (仅 AMD64)"
+        fi
     fi
 
     # 显示导出的文件
