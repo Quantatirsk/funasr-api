@@ -7,7 +7,7 @@ import warnings
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi_offline import FastAPIOffline as FastAPI
+from fastapi_offline import FastAPIOffline
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -99,13 +99,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Worker [{worker_id}] 已关闭")
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPIOffline:
     """创建FastAPI应用"""
 
     # 设置日志
     setup_logging()
 
-    app = FastAPI(
+    app = FastAPIOffline(
         title=settings.APP_NAME,
         description=settings.APP_DESCRIPTION,
         version=settings.APP_VERSION,
