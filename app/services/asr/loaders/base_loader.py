@@ -58,7 +58,7 @@ class BaseModelLoader(ABC):
     @abstractmethod
     def prepare_generate_kwargs(
         self,
-        audio_path: str,
+        audio_path: Optional[str],
         hotwords: str = "",
         enable_punctuation: bool = False,
         enable_itn: bool = False,
@@ -67,7 +67,7 @@ class BaseModelLoader(ABC):
         """准备模型推理参数
 
         Args:
-            audio_path: 音频文件路径
+            audio_path: 音频文件路径，批量推理时为 None
             hotwords: 热词
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用ITN

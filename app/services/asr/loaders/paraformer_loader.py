@@ -92,7 +92,7 @@ class ParaformerModelLoader(BaseModelLoader):
 
     def prepare_generate_kwargs(
         self,
-        audio_path: str,
+        audio_path: Optional[str],
         hotwords: str = "",
         enable_punctuation: bool = False,
         enable_itn: bool = False,

@@ -100,7 +100,7 @@ class FunASRNanoModelLoader(BaseModelLoader):
 
     def prepare_generate_kwargs(
         self,
-        audio_path: str,
+        audio_path: Optional[str],
         hotwords: str = "",
         enable_punctuation: bool = False,  # noqa: ARG002
         enable_itn: bool = True,
@@ -110,7 +110,7 @@ class FunASRNanoModelLoader(BaseModelLoader):
         """准备 Fun-ASR-Nano 推理参数
 
         Args:
-            audio_path: 音频文件路径
+            audio_path: 音频文件路径，批量推理时为 None
             hotwords: 热词（逗号分隔）
             enable_punctuation: 忽略（内置支持）
             enable_itn: 是否启用 ITN
