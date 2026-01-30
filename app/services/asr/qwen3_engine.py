@@ -153,6 +153,7 @@ class Qwen3ASREngine(BaseASREngine):
         enable_itn: bool = True,
         sample_rate: int = 16000,
         word_timestamps: bool = True,
+        **kwargs,
     ) -> ASRRawResult:
         """
         使用 VAD 转录音频文件，返回带时间戳分段的结果
@@ -164,10 +165,12 @@ class Qwen3ASREngine(BaseASREngine):
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
             word_timestamps: 是否返回字词级时间戳（默认 True）
+            **kwargs: 额外参数（兼容基类）
 
         Returns:
             ASRRawResult 包含文本和分段信息，每个 segment 包含 word_tokens
         """
+        _ = kwargs  # 忽略额外参数
         try:
             results = self.model.transcribe(
                 audio=audio_path,
