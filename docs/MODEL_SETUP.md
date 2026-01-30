@@ -116,7 +116,6 @@ volumes:
 | 模型 | 用途 | 大小 |
 |------|------|------|
 | Qwen3-ASR-1.7B | 离线 ASR（默认，52种语言+字级时间戳） | ~4GB |
-| Qwen3-ASR-0.6B | 轻量多语言 ASR | ~1.5GB |
 | Paraformer Large (VAD+PUNC) | 高精度中文 ASR | ~2GB |
 | Paraformer Large Online | 实时 ASR | ~2GB |
 | Fun-ASR-Nano | 多语言+方言 ASR | ~1GB |

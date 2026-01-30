@@ -99,7 +99,7 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 
 | 模型 | 说明 |
 |------|------|
-| Qwen3-ASR-1.7B | 多语言 ASR（默认，52种语言+方言，字级时间戳） |
+| Qwen3-ASR-1.7B ⭐ | 多语言 ASR（默认，52种语言+方言，字级时间戳） |
 | Paraformer Large (VAD+PUNC) | 高精度中文 ASR |
 | Paraformer Large Online | 实时流式 ASR |
 | Fun-ASR-Nano | 多语言+方言 ASR |
