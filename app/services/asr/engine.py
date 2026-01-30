@@ -121,7 +121,7 @@ class BaseASREngine(ABC):
     """基础ASR引擎抽象基类"""
 
     # 默认最大音频时长限制（秒）
-    MAX_AUDIO_DURATION_SEC = 80.0
+    MAX_AUDIO_DURATION_SEC = 60.0
 
     @abstractmethod
     def transcribe_file(
