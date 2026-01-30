@@ -7,7 +7,8 @@ Qwen3-ASR 引擎 - 内嵌 vLLM 后端
 """
 
 import logging
-from typing import Optional, List, Any, Tuple
+from typing import Optional, List, Any, Tuple, Dict
+from dataclasses import dataclass
 
 import torch
 import numpy as np
@@ -16,6 +17,16 @@ from .engine import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult
 from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException
 from ...utils.audio import get_audio_duration
+
+
+@dataclass
+class Qwen3StreamingState:
+    """Qwen3-ASR 流式状态包装器"""
+
+    internal_state: Any  # Qwen3ASRModel.ASRStreamingState
+    chunk_count: int = 0
+    last_text: str = ""
+    last_language: str = ""
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +377,114 @@ class Qwen3ASREngine(BaseASREngine):
         """
         是否支持实时识别
 
-        Note: Qwen3-ASR vLLM 后端暂不支持 WebSocket 流式
-        流式识别建议使用 qwen-asr-serve 或 vllm serve 单独部署
+        Qwen3-ASR vLLM 后端支持流式识别（通过累积重推理机制）
         """
-        return False
+        return True
+
+    def init_streaming_state(
+        self,
+        context: str = "",
+        language: Optional[str] = None,
+        unfixed_chunk_num: int = 2,
+        unfixed_token_num: int = 5,
+        chunk_size_sec: float = 2.0,
+    ) -> Qwen3StreamingState:
+        """
+        初始化流式识别状态
+
+        Args:
+            context: 上下文/热词提示
+            language: 强制语言（如 "Chinese", "English"），None 表示自动检测
+            unfixed_chunk_num: 前 N 个 chunk 不使用 prefix 提示
+            unfixed_token_num: 回滚 token 数，用于减少边界抖动
+            chunk_size_sec: 每个 chunk 的音频长度（秒）
+
+        Returns:
+            Qwen3StreamingState: 流式状态对象
+        """
+        if self.model is None:
+            raise DefaultServerErrorException("模型未加载")
+
+        try:
+            internal_state = self.model.init_streaming_state(
+                context=context,
+                language=language,
+                unfixed_chunk_num=unfixed_chunk_num,
+                unfixed_token_num=unfixed_token_num,
+                chunk_size_sec=chunk_size_sec,
+            )
+            return Qwen3StreamingState(
+                internal_state=internal_state,
+                chunk_count=0,
+                last_text="",
+                last_language="",
+            )
+        except Exception as e:
+            logger.error(f"初始化流式状态失败: {e}")
+            raise DefaultServerErrorException(f"初始化流式状态失败: {e}")
+
+    def streaming_transcribe(
+        self,
+        pcm16k: np.ndarray,
+        state: Qwen3StreamingState,
+    ) -> Qwen3StreamingState:
+        """
+        流式识别音频块
+
+        Args:
+            pcm16k: 16kHz 单声道音频数据（float32 numpy 数组）
+            state: 流式状态对象
+
+        Returns:
+            Qwen3StreamingState: 更新后的状态对象
+        """
+        if self.model is None:
+            raise DefaultServerErrorException("模型未加载")
+
+        try:
+            # 确保音频是 float32
+            if pcm16k.dtype == np.int16:
+                pcm16k = (pcm16k.astype(np.float32) / 32768.0)
+            else:
+                pcm16k = pcm16k.astype(np.float32, copy=False)
+
+            # 调用 Qwen3-ASR 的流式识别
+            self.model.streaming_transcribe(pcm16k, state.internal_state)
+
+            # 更新包装器状态
+            state.chunk_count += 1
+            state.last_text = state.internal_state.text
+            state.last_language = state.internal_state.language
+
+            return state
+        except Exception as e:
+            logger.error(f"流式识别失败: {e}")
+            raise DefaultServerErrorException(f"流式识别失败: {e}")
+
+    def finish_streaming_transcribe(
+        self,
+        state: Qwen3StreamingState,
+    ) -> Qwen3StreamingState:
+        """
+        结束流式识别，处理剩余音频
+
+        Args:
+            state: 流式状态对象
+
+        Returns:
+            Qwen3StreamingState: 最终结果状态
+        """
+        if self.model is None:
+            raise DefaultServerErrorException("模型未加载")
+
+        try:
+            self.model.finish_streaming_transcribe(state.internal_state)
+
+            # 更新包装器状态
+            state.last_text = state.internal_state.text
+            state.last_language = state.internal_state.language
+
+            return state
+        except Exception as e:
+            logger.error(f"结束流式识别失败: {e}")
+            raise DefaultServerErrorException(f"结束流式识别失败: {e}")
