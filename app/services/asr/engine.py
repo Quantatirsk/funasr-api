@@ -172,9 +172,6 @@ class BaseASREngine(ABC):
         """
         from ...utils.audio_splitter import AudioSplitter
 
-        # 从统一配置读取最大片段时长
-        max_segment_sec = settings.MAX_SEGMENT_SEC
-
         logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}")
 
         try:
@@ -217,7 +214,7 @@ class BaseASREngine(ABC):
                 from ...utils.speaker_diarizer import SpeakerDiarizer
 
                 logger.info("使用说话人分离模式")
-                diarizer = SpeakerDiarizer(max_segment_sec=max_segment_sec)
+                diarizer = SpeakerDiarizer()
                 speaker_segments = diarizer.split_audio_by_speakers(audio_path)
 
                 if not speaker_segments:
@@ -226,9 +223,7 @@ class BaseASREngine(ABC):
             if not speaker_segments:
                 # 单说话人：使用 VAD 分割
                 logger.info("使用 VAD 分割模式")
-                splitter = AudioSplitter(
-                    max_segment_sec=max_segment_sec, device=self.device
-                )
+                splitter = AudioSplitter(device=self.device)
                 audio_segments = splitter.split_audio_file(audio_path)
 
             # 选择要处理的片段

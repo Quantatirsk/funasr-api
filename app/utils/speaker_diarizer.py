@@ -204,7 +204,7 @@ class SpeakerDiarizer:
         from .audio_splitter import AudioSplitter
 
         result = []
-        splitter = AudioSplitter(max_segment_sec=self.max_segment_sec)
+        splitter = AudioSplitter()
 
         # 只获取一次VAD（优化：避免重复调用）
         all_vad_segments = None
