@@ -155,7 +155,7 @@ class BaseASREngine(ABC):
         enable_punctuation: bool = False,
         enable_itn: bool = False,
         sample_rate: int = 16000,
-        max_segment_sec: float = 55.0,
+        max_segment_sec: Optional[float] = None,
         enable_speaker_diarization: bool = True,
     ) -> ASRFullResult:
         """转录长音频文件（自动分段）
@@ -166,13 +166,17 @@ class BaseASREngine(ABC):
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
-            max_segment_sec: 每段最大时长（秒）
+            max_segment_sec: 每段最大时长（秒），默认从配置读取
             enable_speaker_diarization: 是否启用说话人分离
 
         Returns:
             ASRFullResult: 包含完整文本、分段结果和时长的结果
         """
         from ...utils.audio_splitter import AudioSplitter
+        from ...core.config import settings
+
+        # 使用传入值或配置值
+        max_segment_sec = max_segment_sec or settings.MAX_SEGMENT_SEC
 
         logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}")
 

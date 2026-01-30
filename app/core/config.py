@@ -78,6 +78,9 @@ class Settings:
     # 批处理推理配置（GPU 真并行）
     ASR_BATCH_SIZE: int = 8  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
+    # 音频分段配置
+    MAX_SEGMENT_SEC: float = 80.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
+
     def __init__(self):
         """从环境变量读取配置"""
         self._load_from_env()
@@ -142,6 +145,10 @@ class Settings:
 
         self.ASR_BATCH_SIZE = int(
             os.getenv("ASR_BATCH_SIZE", str(self.ASR_BATCH_SIZE))
+        )
+
+        self.MAX_SEGMENT_SEC = float(
+            os.getenv("MAX_SEGMENT_SEC", str(self.MAX_SEGMENT_SEC))
         )
 
     def _parse_size(self, size_str: str) -> int:
