@@ -238,9 +238,8 @@ class SpeakerDiarizer:
                 )
                 merged.append(merged_seg)
 
-                # 标记后续同说话人片段为已跳过
-                for idx in same_speaker_indices[1:]:
-                    skip_indices.add(idx)
+                # 只标记第一个后续片段为已跳过（被合并的那个）
+                skip_indices.add(next_idx)
 
                 logger.debug(
                     f"[短片段合并] {seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
