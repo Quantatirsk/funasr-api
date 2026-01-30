@@ -76,7 +76,7 @@ class Settings:
     MAX_AUDIO_SIZE: int = 2048 * 1024 * 1024  # 2GB
 
     # 批处理推理配置（GPU 真并行）
-    ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8
+    ASR_BATCH_SIZE: int = 8  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
     def __init__(self):
         """从环境变量读取配置"""
