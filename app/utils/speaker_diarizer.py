@@ -225,15 +225,24 @@ class SpeakerDiarizer:
                         sub_segments = self._merge_vad_for_speaker(
                             seg_vad_segments, seg.start_ms, seg.end_ms, seg.speaker_id
                         )
-                        result.extend(sub_segments)
+                        # 逐个添加子片段，尝试与前一个片段合并
+                        for sub_seg in sub_segments:
+                            if not self._try_merge_with_last(result, sub_seg):
+                                result.append(sub_seg)
                     else:
                         # VAD 未检测到语音，fallback 到硬切
                         logger.warning(f"VAD 未检测到语音边界，fallback 到硬切")
-                        self._hard_split_segment(seg, result)
+                        hard_split_segments = self._hard_split_segment(seg)
+                        for sub_seg in hard_split_segments:
+                            if not self._try_merge_with_last(result, sub_seg):
+                                result.append(sub_seg)
 
                 except Exception as e:
                     logger.error(f"VAD 切分失败，fallback 到硬切: {e}")
-                    self._hard_split_segment(seg, result)
+                    hard_split_segments = self._hard_split_segment(seg)
+                    for sub_seg in hard_split_segments:
+                        if not self._try_merge_with_last(result, sub_seg):
+                            result.append(sub_seg)
 
         logger.info(f"切分并合并完成: {len(segments)} → {len(result)}")
         return result
@@ -337,8 +346,16 @@ class SpeakerDiarizer:
 
         return final_merged
 
-    def _hard_split_segment(self, seg: SpeakerSegment, result: List[SpeakerSegment]) -> None:
-        """硬性切分（fallback）"""
+    def _hard_split_segment(self, seg: SpeakerSegment) -> List[SpeakerSegment]:
+        """硬性切分（fallback）
+
+        Args:
+            seg: 待切分的片段
+
+        Returns:
+            切分后的片段列表
+        """
+        segments = []
         current_start = seg.start_ms
         while current_start < seg.end_ms:
             current_end = min(current_start + self.max_segment_ms, seg.end_ms)
@@ -346,12 +363,14 @@ class SpeakerDiarizer:
             if 0 < remaining < self.min_segment_ms:
                 current_end = seg.end_ms
 
-            result.append(SpeakerSegment(
+            segments.append(SpeakerSegment(
                 start_ms=current_start,
                 end_ms=current_end,
                 speaker_id=seg.speaker_id,
             ))
             current_start = current_end
+
+        return segments
 
     def split_audio_by_speakers(
         self,
