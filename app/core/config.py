@@ -79,7 +79,7 @@ class Settings:
     ASR_BATCH_SIZE: int = 8  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
     # 音频分段配置
-    MAX_SEGMENT_SEC: float = 80.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
+    MAX_SEGMENT_SEC: float = 120.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
 
     def __init__(self):
         """从环境变量读取配置"""
