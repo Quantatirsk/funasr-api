@@ -393,8 +393,9 @@ class SpeakerDiarizer:
             # 2. 合并同一说话人连续片段
             merged_segments = self.merge_consecutive_segments(raw_segments)
 
-            # 3. 切分超长片段（使用VAD智能切分）
-            final_segments = self.split_long_segments(audio_path, merged_segments)
+            # 3. 【跳过VAD切分】直接使用CAM++合并后的结果
+            logger.info(f"[测试模式] 跳过VAD切分，直接使用CAM++结果: {len(merged_segments)} 个片段")
+            final_segments = merged_segments
 
             # 4. 加载音频并提取片段
             logger.info("加载音频并提取片段...")
