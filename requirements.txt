@@ -13,16 +13,12 @@ addict==2.4.0
 datasets==3.6.0
 scipy==1.15.3
 httpx==0.28.1
-
 wetext==0.1.2
 python-dotenv==1.2.1
 transformers>=4.51.3
 hdbscan>=0.8.41
 
-# Fun-ASR-Nano
-# torch and torchaudio are provided by base image (pytorch/pytorch:2.10.0-cuda13.0-cudnn9-runtime)
-zhconv
-whisper_normalizer
-openai-whisper
-compute-wer
-pyopenjtalk-plus
+# Qwen3-ASR
+# 使用 vLLM 后端需要安装 qwen-asr[vllm]
+# 注意：需要先安装 vLLM，建议使用官方镜像或 pip install vllm
+qwen-asr[vllm]>=0.0.6

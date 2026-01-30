@@ -35,6 +35,61 @@
             "extra_kwargs": {
                 "trust_remote_code": true
             }
+        },
+        "qwen3-asr-1.7b": {
+            "name": "Qwen3-ASR-1.7B",
+            "engine": "qwen3",
+            "description": "Qwen3-ASR 1.7B，支持52种语言和方言，vLLM后端高性能推理，字级时间戳",
+            "languages": [
+                "zh",
+                "en",
+                "yue",
+                "ja",
+                "ko",
+                "ar",
+                "de",
+                "es",
+                "fr",
+                "pt",
+                "id",
+                "it",
+                "ru",
+                "th",
+                "vi"
+            ],
+            "default": false,
+            "supports_realtime": false,
+            "models": {
+                "offline": "Qwen/Qwen3-ASR-1.7B"
+            },
+            "extra_kwargs": {
+                "gpu_memory_utilization": 0.8,
+                "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
+                "max_inference_batch_size": 32,
+                "max_new_tokens": 1024
+            }
+        },
+        "qwen3-asr-0.6b": {
+            "name": "Qwen3-ASR-0.6B",
+            "engine": "qwen3",
+            "description": "Qwen3-ASR 0.6B轻量版，适合边缘部署，支持52种语言",
+            "languages": [
+                "zh",
+                "en",
+                "yue",
+                "ja",
+                "ko"
+            ],
+            "supports_realtime": false,
+            "models": {
+                "offline": "Qwen/Qwen3-ASR-0.6B"
+            },
+            "extra_kwargs": {
+                "gpu_memory_utilization": 0.6,
+                "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
+                "max_inference_batch_size": 64,
+                "max_new_tokens": 1024
+            }
         }
     }
 }

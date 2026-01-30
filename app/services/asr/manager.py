@@ -179,7 +179,9 @@ class ModelManager:
 
     def _create_engine(self, config: ModelConfig) -> BaseASREngine:
         """根据配置创建ASR引擎"""
-        if config.engine.lower() == "funasr":
+        engine_type = config.engine.lower()
+
+        if engine_type == "funasr":
             return FunASREngine(
                 offline_model_path=config.offline_model_path,
                 realtime_model_path=config.realtime_model_path,
@@ -188,6 +190,13 @@ class ModelManager:
                 punc_model=settings.PUNC_MODEL,
                 punc_realtime_model=settings.PUNC_REALTIME_MODEL,
                 extra_model_kwargs=config.extra_kwargs,
+            )
+        elif engine_type == "qwen3":
+            from .qwen3_engine import Qwen3ASREngine
+            return Qwen3ASREngine(
+                model_path=config.offline_model_path,
+                device=settings.DEVICE,
+                **config.extra_kwargs
             )
         else:
             raise InvalidParameterException(f"不支持的引擎类型: {config.engine}")

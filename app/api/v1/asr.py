@@ -94,6 +94,8 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 ## 可用模型
 - **paraformer-large**（默认）：高精度中文语音识别，内置VAD+标点
 - **fun-asr-nano**：轻量级多语言ASR，支持31种语言、7大中文方言
+- **qwen3-asr-1.7b**：Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能
+- **qwen3-asr-0.6b**：Qwen3-ASR 0.6B轻量版，适合边缘部署
 
 ## 音频输入方式
 1. **请求体上传**：将音频二进制数据作为请求体发送
@@ -114,10 +116,10 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                     "type": "string",
                     "maxLength": 64,
                     "default": "paraformer-large",
-                    "enum": ["paraformer-large", "fun-asr-nano"],
+                    "enum": ["paraformer-large", "fun-asr-nano", "qwen3-asr-1.7b", "qwen3-asr-0.6b"],
                     "example": "paraformer-large",
                 },
-                "description": "ASR 模型 ID。可选值：paraformer-large（默认）、fun-asr-nano（多语言+方言）",
+                "description": "ASR 模型 ID。可选值：paraformer-large（默认）、fun-asr-nano（多语言+方言）、qwen3-asr-1.7b（高性能52语言）、qwen3-asr-0.6b（轻量版）",
             },
             # 2. 输入源
             {

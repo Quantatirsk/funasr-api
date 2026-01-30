@@ -807,6 +807,11 @@ class FunASREngine(RealTimeASREngine):
             logger.warning("离线模型未加载，使用默认批处理实现")
             return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate)
 
+        # Fun-ASR-Nano 模型不支持批量推理，直接使用逐个推理
+        if self._offline_loader.model_type == "fun-asr-nano":
+            logger.debug("Fun-ASR-Nano 模型使用逐个推理模式")
+            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate)
+
         # 过滤有效片段
         valid_segments = [(idx, seg) for idx, seg in enumerate(segments) if seg.temp_file]
         if not valid_segments:
