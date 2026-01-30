@@ -197,8 +197,8 @@ class SpeakerDiarizer:
         """智能合并短片段
 
         策略：
-        1. 第一层：累积合并同说话人片段，只要总时长 <= 60s
-        2. 第二层：<10s的片段向后合并（避免孤立短片段）
+        1. 第一层：<10s的片段向后合并（避免孤立短片段）
+        2. 第二层：60s累积合并（合并连续片段）
         """
         if not segments:
             return []
@@ -206,18 +206,55 @@ class SpeakerDiarizer:
         # 按开始时间排序
         sorted_segments = sorted(segments, key=lambda x: x.start_ms)
 
-        # 第一层：60s累积合并
+        # 第一层：<10s片段向后合并
         merged = []
+        skip_indices = set()
+        for i, seg in enumerate(sorted_segments):
+            if i in skip_indices:
+                continue
+
+            # 如果>=10s或最后一个，直接添加
+            if seg.duration_sec >= 10.0 or i == len(sorted_segments) - 1:
+                merged.append(seg)
+                continue
+
+            # <10s，尝试向后合并到同说话人
+            for j in range(i + 1, len(sorted_segments)):
+                next_seg = sorted_segments[j]
+                if next_seg.speaker_id != seg.speaker_id:
+                    break
+                combined_duration = (next_seg.end_ms - seg.start_ms) / 1000.0
+                if combined_duration <= 60.0:
+                    # 可以合并
+                    merged_seg = SpeakerSegment(
+                        start_ms=seg.start_ms,
+                        end_ms=next_seg.end_ms,
+                        speaker_id=seg.speaker_id,
+                    )
+                    merged.append(merged_seg)
+                    skip_indices.add(j)
+                    logger.debug(
+                        f"[第一层] {seg.speaker_id}: "
+                        f"{seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
+                        f"-> 合并到 {next_seg.start_sec:.2f}-{next_seg.end_sec:.2f}s"
+                    )
+                    break
+            else:
+                # 没找到可合并的，保留
+                merged.append(seg)
+
+        # 第二层：60s累积合并
+        final_merged = []
         i = 0
-        while i < len(sorted_segments):
-            seg = sorted_segments[i]
+        while i < len(merged):
+            seg = merged[i]
             current_start_ms = seg.start_ms
             current_end_ms = seg.end_ms
             j = i + 1
 
             # 累积合并，只要 <= 60s 且同说话人
-            while j < len(sorted_segments):
-                next_seg = sorted_segments[j]
+            while j < len(merged):
+                next_seg = merged[j]
                 if next_seg.speaker_id != seg.speaker_id:
                     break
                 new_duration = (next_seg.end_ms - current_start_ms) / 1000.0
@@ -231,44 +268,14 @@ class SpeakerDiarizer:
                 end_ms=current_end_ms,
                 speaker_id=seg.speaker_id,
             )
-            merged.append(merged_seg)
+            final_merged.append(merged_seg)
 
             if j > i + 1:
                 logger.debug(
-                    f"[第一层合并] {seg.speaker_id}: "
+                    f"[第二层] {seg.speaker_id}: "
                     f"合并了 {j - i} 个片段"
                 )
             i = j
-
-        # 第二层：<10s片段向后合并
-        final_merged = []
-        for idx, seg in enumerate(merged):
-            if seg.duration_sec >= 10.0:
-                final_merged.append(seg)
-                continue
-
-            # <10s，尝试向后合并
-            if idx + 1 < len(merged) and merged[idx + 1].speaker_id == seg.speaker_id:
-                next_seg = merged[idx + 1]
-                combined_duration = (next_seg.end_ms - seg.start_ms) / 1000.0
-                if combined_duration <= 60.0:
-                    # 合并到下一个
-                    merged_seg = SpeakerSegment(
-                        start_ms=seg.start_ms,
-                        end_ms=next_seg.end_ms,
-                        speaker_id=seg.speaker_id,
-                    )
-                    # 替换下一个片段（后续循环会跳过）
-                    merged[idx + 1] = merged_seg
-                    logger.debug(
-                        f"[第二层合并] {seg.speaker_id}: "
-                        f"{seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
-                        f"-> 合并到下一个"
-                    )
-                    continue
-
-            # 无法合并或最后一个，保留
-            final_merged.append(seg)
 
         return final_merged
 
