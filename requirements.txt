@@ -1,4 +1,5 @@
 fastapi==0.128.0
+fastapi-offline==1.7.6
 uvicorn[standard]==0.40.0
 python-multipart==0.0.22
 funasr==1.3.1
