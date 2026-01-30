@@ -251,9 +251,10 @@ class Qwen3ASREngine(BaseASREngine):
         enable_punctuation: bool = False,
         enable_itn: bool = False,
         sample_rate: int = 16000,
-    ) -> List[str]:
+        word_timestamps: bool = False,
+    ) -> List[ASRSegmentResult]:
         """
-        批量转写多个音频片段
+        批量转写多个音频片段，支持字词级时间戳
 
         利用 Qwen3-ASR 的原生批处理能力
 
@@ -263,36 +264,70 @@ class Qwen3ASREngine(BaseASREngine):
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
+            word_timestamps: 是否返回字词级时间戳
 
         Returns:
-            识别文本列表
+            ASRSegmentResult 列表
         """
         # 过滤有效片段
         valid_paths = []
+        valid_segments = []
         valid_indices = []
 
         for idx, seg in enumerate(segments):
             if hasattr(seg, "temp_file") and seg.temp_file:
                 valid_paths.append(seg.temp_file)
+                valid_segments.append(seg)
                 valid_indices.append(idx)
 
         if not valid_paths:
-            return [""] * len(segments)
+            return [
+                ASRSegmentResult(text="", start_time=0.0, end_time=0.0)
+                for _ in segments
+            ]
 
         try:
-            logger.info(f"Qwen3-ASR 批量推理: {len(valid_paths)} 个片段")
+            logger.info(
+                f"Qwen3-ASR 批量推理: {len(valid_paths)} 个片段, word_timestamps={word_timestamps}"
+            )
 
             # 使用 Qwen3-ASR 原生批处理
             results = self.model.transcribe(
                 audio=valid_paths,
                 context=hotwords if hotwords else "",
-                return_time_stamps=False,
+                return_time_stamps=word_timestamps,
             )
 
             # 组装结果
-            output = [""] * len(segments)
-            for idx, result in zip(valid_indices, results):
-                output[idx] = result.text or ""
+            output: List[ASRSegmentResult] = [
+                ASRSegmentResult(text="", start_time=0.0, end_time=0.0)
+                for _ in segments
+            ]
+
+            for idx, seg, result in zip(valid_indices, valid_segments, results):
+                # 转换字词级时间戳
+                word_tokens = None
+                if (
+                    word_timestamps
+                    and hasattr(result, "time_stamps")
+                    and result.time_stamps
+                ):
+                    word_tokens = [
+                        WordToken(
+                            text=item.text,
+                            start_time=round(item.start_time, 3),
+                            end_time=round(item.end_time, 3),
+                        )
+                        for item in result.time_stamps.items
+                    ]
+
+                output[idx] = ASRSegmentResult(
+                    text=result.text or "",
+                    start_time=round(seg.start_sec, 2),
+                    end_time=round(seg.end_sec, 2),
+                    speaker_id=getattr(seg, "speaker_id", None),
+                    word_tokens=word_tokens,
+                )
 
             logger.info(f"Qwen3-ASR 批量推理完成: {len(valid_paths)}/{len(segments)}")
             return output
@@ -301,7 +336,7 @@ class Qwen3ASREngine(BaseASREngine):
             logger.error(f"Qwen3-ASR 批量推理失败: {e}，降级到单条推理")
             # 降级：逐个推理
             return super()._transcribe_batch(
-                segments, hotwords, enable_punctuation, enable_itn, sample_rate
+                segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps
             )
 
     def is_model_loaded(self) -> bool:

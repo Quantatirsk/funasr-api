@@ -262,76 +262,47 @@ class BaseASREngine(ABC):
             results: List[ASRSegmentResult] = []
             all_texts: List[str] = []
 
-            # 根据是否需要时间戳选择处理方式
-            if word_timestamps:
-                # 需要字词级时间戳：逐个处理（Qwen3-ASR 的 ForcedAligner 需要完整音频上下文）
-                logger.info(f"启用字词级时间戳，使用逐段推理: {len(segments_to_process)} 段")
-                for idx, seg in enumerate(segments_to_process):
-                    try:
-                        raw_result = self.transcribe_file_with_vad(
-                            audio_path=seg.temp_file,
-                            hotwords=hotwords,
-                            enable_punctuation=enable_punctuation,
-                            enable_itn=enable_itn,
-                            sample_rate=sample_rate,
-                            word_timestamps=True,
-                        )
-                        if raw_result.segments:
-                            # 取第一个分段的时间戳（通常只有一段）
-                            result_seg = raw_result.segments[0]
+            # 使用批处理推理
+            batch_size = settings.ASR_BATCH_SIZE
+            logger.info(f"使用批处理推理，batch_size={batch_size}, word_timestamps={word_timestamps}")
+
+            for batch_start in range(0, len(segments_to_process), batch_size):
+                batch_end = min(batch_start + batch_size, len(segments_to_process))
+                batch_segments = segments_to_process[batch_start:batch_end]
+
+                logger.info(
+                    f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
+                    f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
+                )
+
+                try:
+                    # 批量推理，支持时间戳
+                    batch_results = self._transcribe_batch(
+                        segments=batch_segments,
+                        hotwords=hotwords,
+                        enable_punctuation=enable_punctuation,
+                        enable_itn=enable_itn,
+                        sample_rate=sample_rate,
+                        word_timestamps=word_timestamps,
+                    )
+
+                    for seg, result in zip(batch_segments, batch_results):
+                        if result and result.text:
                             results.append(
                                 ASRSegmentResult(
-                                    text=result_seg.text,
+                                    text=result.text,
                                     start_time=seg.start_sec,
                                     end_time=seg.end_sec,
                                     speaker_id=getattr(seg, 'speaker_id', None),
-                                    word_tokens=result_seg.word_tokens,
+                                    word_tokens=result.word_tokens if word_timestamps else None,
                                 )
                             )
-                            all_texts.append(result_seg.text)
-                        logger.info(f"逐段推理 {idx+1}/{len(segments_to_process)} 完成")
-                    except Exception as e:
-                        logger.error(f"逐段推理 {idx+1} 失败: {e}, 跳过")
-            else:
-                # 不需要时间戳：使用批量处理（更高效）
-                batch_size = settings.ASR_BATCH_SIZE
-                logger.info(f"使用批处理推理，batch_size={batch_size}")
+                            all_texts.append(result.text)
 
-                for batch_start in range(0, len(segments_to_process), batch_size):
-                    batch_end = min(batch_start + batch_size, len(segments_to_process))
-                    batch_segments = segments_to_process[batch_start:batch_end]
+                    logger.info(f"批次推理完成，有效片段: {len([r for r in batch_results if r and r.text])}")
 
-                    logger.info(
-                        f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
-                        f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
-                    )
-
-                    try:
-                        batch_texts = self._transcribe_batch(
-                            segments=batch_segments,
-                            hotwords=hotwords,
-                            enable_punctuation=enable_punctuation,
-                            enable_itn=enable_itn,
-                            sample_rate=sample_rate,
-                        )
-
-                        for seg, text in zip(batch_segments, batch_texts):
-                            if text:
-                                speaker_id = getattr(seg, 'speaker_id', None)
-                                results.append(
-                                    ASRSegmentResult(
-                                        text=text,
-                                        start_time=seg.start_sec,
-                                        end_time=seg.end_sec,
-                                        speaker_id=speaker_id,
-                                    )
-                                )
-                                all_texts.append(text)
-
-                        logger.info(f"批次推理完成，有效片段: {len([t for t in batch_texts if t])}")
-
-                    except Exception as e:
-                        logger.error(f"批次推理失败: {e}, 跳过该批次")
+                except Exception as e:
+                    logger.error(f"批次推理失败: {e}, 跳过该批次")
 
             # 清理临时文件
             try:
@@ -384,7 +355,8 @@ class BaseASREngine(ABC):
         enable_punctuation: bool = False,
         enable_itn: bool = False,
         sample_rate: int = 16000,
-    ) -> List[str]:
+        word_timestamps: bool = False,
+    ) -> List[ASRSegmentResult]:
         """批量推理多个音频片段
 
         Args:
@@ -393,9 +365,10 @@ class BaseASREngine(ABC):
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
+            word_timestamps: 是否返回字词级时间戳
 
         Returns:
-            识别文本列表，与输入片段一一对应
+            ASRSegmentResult 列表，与输入片段一一对应
         """
         # 默认实现：逐个推理（子类可以重写实现真正的批处理）
         results = []
@@ -403,21 +376,67 @@ class BaseASREngine(ABC):
             try:
                 if not seg.temp_file:
                     logger.warning(f"批处理片段 {idx + 1} 临时文件不存在，跳过")
-                    results.append("")
+                    results.append(ASRSegmentResult(text="", start_time=0.0, end_time=0.0))
                     continue
 
-                text = self.transcribe_file(
-                    audio_path=seg.temp_file,
-                    hotwords=hotwords,
-                    enable_punctuation=enable_punctuation,
-                    enable_itn=enable_itn,
-                    enable_vad=False,
-                    sample_rate=sample_rate,
-                )
-                results.append(text)
+                if word_timestamps:
+                    # 需要时间戳：使用 transcribe_file_with_vad
+                    raw_result = self.transcribe_file_with_vad(
+                        audio_path=seg.temp_file,
+                        hotwords=hotwords,
+                        enable_punctuation=enable_punctuation,
+                        enable_itn=enable_itn,
+                        sample_rate=sample_rate,
+                        word_timestamps=True,
+                    )
+                    if raw_result.segments:
+                        result_seg = raw_result.segments[0]
+                        results.append(
+                            ASRSegmentResult(
+                                text=result_seg.text,
+                                start_time=seg.start_sec,
+                                end_time=seg.end_sec,
+                                speaker_id=getattr(seg, 'speaker_id', None),
+                                word_tokens=result_seg.word_tokens,
+                            )
+                        )
+                    else:
+                        results.append(
+                            ASRSegmentResult(
+                                text=raw_result.text,
+                                start_time=seg.start_sec,
+                                end_time=seg.end_sec,
+                                speaker_id=getattr(seg, 'speaker_id', None),
+                            )
+                        )
+                else:
+                    # 不需要时间戳：使用 transcribe_file
+                    text = self.transcribe_file(
+                        audio_path=seg.temp_file,
+                        hotwords=hotwords,
+                        enable_punctuation=enable_punctuation,
+                        enable_itn=enable_itn,
+                        enable_vad=False,
+                        sample_rate=sample_rate,
+                    )
+                    results.append(
+                        ASRSegmentResult(
+                            text=text or "",
+                            start_time=seg.start_sec,
+                            end_time=seg.end_sec,
+                            speaker_id=getattr(seg, 'speaker_id', None),
+                        )
+                    )
             except Exception as e:
                 logger.error(f"批处理片段 {idx + 1} 推理失败: {e}")
-                results.append("")
+                results.append(
+                    ASRSegmentResult(
+                        text="",
+                        start_time=getattr(seg, 'start_sec', 0.0),
+                        end_time=getattr(seg, 'end_sec', 0.0),
+                        speaker_id=getattr(seg, 'speaker_id', None),
+                    )
+                )
 
         return results
 
@@ -851,24 +870,26 @@ class FunASREngine(RealTimeASREngine):
         enable_punctuation: bool = False,
         enable_itn: bool = False,
         sample_rate: int = 16000,
-    ) -> List[str]:
+        word_timestamps: bool = False,
+    ) -> List[ASRSegmentResult]:
         """批量推理多个音频片段（FunASR 优化版）
 
         利用 FunASR 的批量推理能力，比逐个推理快 2-3 倍
+        注意：FunASR 不支持字词级时间戳，word_timestamps 参数会被忽略
         """
         if not self.offline_model or not self._offline_loader:
             logger.warning("离线模型未加载，使用默认批处理实现")
-            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate)
+            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
 
         # Fun-ASR-Nano 模型不支持批量推理，直接使用逐个推理
         if self._offline_loader.model_type == "fun-asr-nano":
             logger.debug("Fun-ASR-Nano 模型使用逐个推理模式")
-            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate)
+            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
 
         # 过滤有效片段
         valid_segments = [(idx, seg) for idx, seg in enumerate(segments) if seg.temp_file]
         if not valid_segments:
-            return [""] * len(segments)
+            return [ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments]
 
         try:
             import librosa
@@ -885,19 +906,19 @@ class FunASREngine(RealTimeASREngine):
                     logger.error(f"加载音频片段 {idx + 1} 失败: {e}")
                     audio_inputs.append(None)
 
-            # 过滤加载成功的音频
+            # 过滤加载成功的音频，保留原始索引和片段信息
             valid_inputs = [
-                (idx, audio) for (idx, _), audio in zip(valid_segments, audio_inputs) if audio is not None
+                (idx, seg, audio) for (idx, seg), audio in zip(valid_segments, audio_inputs) if audio is not None
             ]
 
             if not valid_inputs:
                 logger.warning("没有成功加载的音频片段")
-                return [""] * len(segments)
+                return [ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments]
 
             logger.info(f"FunASR 批量推理: {len(valid_inputs)} 个片段")
 
             # 准备批量推理参数
-            batch_audio_data = [audio for _, audio in valid_inputs]
+            batch_audio_data = [audio for _, _, audio in valid_inputs]
 
             # 使用加载器准备推理参数（注意：传入音频数据而不是路径）
             generate_kwargs = self._offline_loader.prepare_generate_kwargs(
@@ -915,7 +936,7 @@ class FunASREngine(RealTimeASREngine):
             batch_results = self.offline_model.generate(**generate_kwargs)
 
             # 解析批量结果
-            batch_texts = []
+            batch_results_parsed = []
             if batch_results and isinstance(batch_results, list):
                 for res in batch_results:
                     if isinstance(res, dict):
@@ -929,25 +950,32 @@ class FunASREngine(RealTimeASREngine):
                         if enable_itn and text:
                             text = apply_itn_to_text(text)
 
-                        batch_texts.append(text)
+                        batch_results_parsed.append(text)
                     else:
-                        batch_texts.append("")
+                        batch_results_parsed.append("")
             else:
                 logger.warning("批量推理返回结果格式异常")
-                batch_texts = [""] * len(valid_inputs)
+                batch_results_parsed = [""] * len(valid_inputs)
 
             # 将结果映射回原始顺序（包括跳过的片段）
-            results = [""] * len(segments)
-            for (idx, _), text in zip(valid_inputs, batch_texts):
-                results[idx] = text
+            results: List[ASRSegmentResult] = [
+                ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments
+            ]
+            for (idx, seg, _), text in zip(valid_inputs, batch_results_parsed):
+                results[idx] = ASRSegmentResult(
+                    text=text,
+                    start_time=seg.start_sec,
+                    end_time=seg.end_sec,
+                    speaker_id=getattr(seg, 'speaker_id', None),
+                )
 
-            logger.info(f"FunASR 批量推理完成，有效结果: {sum(1 for t in results if t)}/{len(results)}")
+            logger.info(f"FunASR 批量推理完成，有效结果: {sum(1 for r in results if r.text)}/{len(results)}")
             return results
 
         except Exception as e:
             logger.error(f"FunASR 批量推理失败: {e}，fallback 到逐个推理")
             # fallback 到父类的逐个推理实现
-            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate)
+            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
 
     def is_model_loaded(self) -> bool:
         """检查模型是否已加载"""
