@@ -390,12 +390,9 @@ class SpeakerDiarizer:
                 logger.warning("说话人分离未检测到任何片段")
                 return []
 
-            # 2. 合并同一说话人连续片段
-            merged_segments = self.merge_consecutive_segments(raw_segments)
-
-            # 3. 【跳过VAD切分】直接使用CAM++合并后的结果
-            logger.info(f"[测试模式] 跳过VAD切分，直接使用CAM++结果: {len(merged_segments)} 个片段")
-            final_segments = merged_segments
+            # 2. 【测试模式】跳过合并，直接使用CAM++原始结果
+            logger.info(f"[测试模式] 跳过合并逻辑，直接使用CAM++原始结果: {len(raw_segments)} 个片段")
+            final_segments = raw_segments
 
             # 4. 加载音频并提取片段
             logger.info("加载音频并提取片段...")
