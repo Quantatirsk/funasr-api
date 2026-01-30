@@ -66,9 +66,15 @@ class FunASRNanoModelLoader(BaseModelLoader):
     def _setup_local_code_path(self) -> None:
         """设置本地代码路径，使 Python 能导入 model.py
 
-        FunASR 会通过 remote_code 参数自动添加目录到 sys.path
-        这里只需要记录日志
+        将整个 funasrnano 包添加到 sys.path，使相对导入能正常工作
         """
+        import sys
+
+        parent_dir = str(self.LOCAL_CODE_DIR.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+            logger.debug(f"添加到 sys.path: {parent_dir}")
+
         logger.info(f"Fun-ASR-Nano 使用本地代码: {self.LOCAL_CODE_DIR}")
 
     def load(self) -> AutoModel:
@@ -80,11 +86,19 @@ class FunASRNanoModelLoader(BaseModelLoader):
             resolved_path = self._resolve_model_path(self.model_path)
             logger.info(f"正在加载 Fun-ASR-Nano 模型: {resolved_path}")
 
+            # 先导入模型类，确保注册到 FunASR tables
+            try:
+                from funasrnano.model import FunASRNano
+
+                logger.debug(f"FunASRNano 类已导入并注册: {FunASRNano}")
+            except ImportError as e:
+                logger.warning(f"预导入 FunASRNano 失败（可能不影响加载）: {e}")
+
             model_kwargs = {
                 "model": resolved_path,
                 "device": self.device,
                 "trust_remote_code": True,
-                "remote_code": str(self.LOCAL_CODE_DIR / "model.py"),  # 指定 model.py 路径
+                # 不指定 remote_code，让 FunASR 通过 sys.path 找到已注册的 FunASRNano
                 "disable_update": True,
                 "disable_pbar": True,
                 "disable_log": True,
