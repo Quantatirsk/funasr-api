@@ -88,7 +88,7 @@ class FunASRNanoModelLoader(BaseModelLoader):
 
             # 先导入模型类，确保注册到 FunASR tables
             try:
-                from funasrnano.model import FunASRNano
+                from funasrnano.model import FunASRNano  # type: ignore  # 运行时动态导入
 
                 logger.debug(f"FunASRNano 类已导入并注册: {FunASRNano}")
             except ImportError as e:
