@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=false, reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
 import logging
 import os
 import random
@@ -28,12 +29,12 @@ dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float3
 class FunASRNano(nn.Module):
     def __init__(
         self,
-        audio_encoder: str = None,
-        audio_encoder_conf: dict = None,
-        audio_adaptor: str = None,
-        audio_adaptor_conf: dict = None,
-        llm: str = None,
-        llm_conf: dict = None,
+        audio_encoder: str | None = None,
+        audio_encoder_conf: dict | None = None,
+        audio_adaptor: str | None = None,
+        audio_adaptor_conf: dict | None = None,
+        llm: str | None = None,
+        llm_conf: dict | None = None,
         input_size: int = 80,
         length_normalized_loss: bool = False,
         **kwargs,
@@ -161,13 +162,13 @@ class FunASRNano(nn.Module):
 
     def forward(
         self,
-        speech: torch.Tensor = None,
-        speech_lengths: torch.Tensor = None,
-        input_ids: torch.Tensor = None,
-        attention_mask: torch.Tensor = None,
-        labels_ids: torch.Tensor = None,
-        fbank_beg: torch.Tensor = None,
-        fbank_mask: torch.Tensor = None,
+        speech: torch.Tensor | None = None,
+        speech_lengths: torch.Tensor | None = None,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        labels_ids: torch.Tensor | None = None,
+        fbank_beg: torch.Tensor | None = None,
+        fbank_mask: torch.Tensor | None = None,
         **kwargs,
     ):
         batch_size, token_num = input_ids.shape
@@ -463,7 +464,7 @@ class FunASRNano(nn.Module):
         self,
         data_in,
         data_lengths=None,
-        key: list = None,
+        key: list | None = None,
         tokenizer=None,
         frontend=None,
         **kwargs,
@@ -548,7 +549,7 @@ class FunASRNano(nn.Module):
                     speech_idx += 1
         return inputs_embeds, contents, batch, source_ids, meta_data
 
-    def get_prompt(self, hotwords: List[str], language: str = None, itn: bool = True):
+    def get_prompt(self, hotwords: List[str], language: str | None = None, itn: bool = True):
         if len(hotwords) > 0:
             hotwords = ", ".join(hotwords)
             prompt = f"请结合上下文信息，更加准确地完成语音转写任务。如果没有相关信息，我们会留空。\n\n\n**上下文信息：**\n\n\n"
@@ -585,7 +586,7 @@ class FunASRNano(nn.Module):
         self,
         data_in,
         data_lengths=None,
-        key: list = None,
+        key: list | None = None,
         tokenizer=None,
         frontend=None,
         **kwargs,
@@ -614,7 +615,7 @@ class FunASRNano(nn.Module):
         self,
         data_in,
         data_lengths=None,
-        key: list = None,
+        key: list | None = None,
         tokenizer=None,
         frontend=None,
         **kwargs,
@@ -739,7 +740,7 @@ class FunASRNano(nn.Module):
         return results, meta_data
 
     @staticmethod
-    def from_pretrained(model: str = None, **kwargs):
+    def from_pretrained(model: str | None = None, **kwargs):
         from funasr import AutoModel
 
         model, kwargs = AutoModel.build_model(model=model, trust_remote_code=True, **kwargs)
