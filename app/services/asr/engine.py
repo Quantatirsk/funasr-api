@@ -259,51 +259,79 @@ class BaseASREngine(ABC):
 
             logger.info(f"音频已分割为 {len(segments_to_process)} 段")
 
-            # 批处理推理配置
-            batch_size = settings.ASR_BATCH_SIZE
-            logger.info(f"使用批处理推理，batch_size={batch_size}")
-
             results: List[ASRSegmentResult] = []
             all_texts: List[str] = []
 
-            # 批处理推理
-            for batch_start in range(0, len(segments_to_process), batch_size):
-                batch_end = min(batch_start + batch_size, len(segments_to_process))
-                batch_segments = segments_to_process[batch_start:batch_end]
-
-                logger.info(
-                    f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
-                    f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
-                )
-
-                try:
-                    # 批量推理
-                    batch_texts = self._transcribe_batch(
-                        segments=batch_segments,
-                        hotwords=hotwords,
-                        enable_punctuation=enable_punctuation,
-                        enable_itn=enable_itn,
-                        sample_rate=sample_rate,
-                    )
-
-                    # 组装结果
-                    for seg, text in zip(batch_segments, batch_texts):
-                        if text:
-                            speaker_id = getattr(seg, 'speaker_id', None)
+            # 根据是否需要时间戳选择处理方式
+            if word_timestamps:
+                # 需要字词级时间戳：逐个处理（Qwen3-ASR 的 ForcedAligner 需要完整音频上下文）
+                logger.info(f"启用字词级时间戳，使用逐段推理: {len(segments_to_process)} 段")
+                for idx, seg in enumerate(segments_to_process):
+                    try:
+                        raw_result = self.transcribe_file_with_vad(
+                            audio_path=seg.temp_file,
+                            hotwords=hotwords,
+                            enable_punctuation=enable_punctuation,
+                            enable_itn=enable_itn,
+                            sample_rate=sample_rate,
+                            word_timestamps=True,
+                        )
+                        if raw_result.segments:
+                            # 取第一个分段的时间戳（通常只有一段）
+                            result_seg = raw_result.segments[0]
                             results.append(
                                 ASRSegmentResult(
-                                    text=text,
+                                    text=result_seg.text,
                                     start_time=seg.start_sec,
                                     end_time=seg.end_sec,
-                                    speaker_id=speaker_id,
+                                    speaker_id=getattr(seg, 'speaker_id', None),
+                                    word_tokens=result_seg.word_tokens,
                                 )
                             )
-                            all_texts.append(text)
+                            all_texts.append(result_seg.text)
+                        logger.info(f"逐段推理 {idx+1}/{len(segments_to_process)} 完成")
+                    except Exception as e:
+                        logger.error(f"逐段推理 {idx+1} 失败: {e}, 跳过")
+            else:
+                # 不需要时间戳：使用批量处理（更高效）
+                batch_size = settings.ASR_BATCH_SIZE
+                logger.info(f"使用批处理推理，batch_size={batch_size}")
 
-                    logger.info(f"批次推理完成，有效片段: {len(batch_texts)}")
+                for batch_start in range(0, len(segments_to_process), batch_size):
+                    batch_end = min(batch_start + batch_size, len(segments_to_process))
+                    batch_segments = segments_to_process[batch_start:batch_end]
 
-                except Exception as e:
-                    logger.error(f"批次推理失败: {e}, 跳过该批次")
+                    logger.info(
+                        f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
+                        f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
+                    )
+
+                    try:
+                        batch_texts = self._transcribe_batch(
+                            segments=batch_segments,
+                            hotwords=hotwords,
+                            enable_punctuation=enable_punctuation,
+                            enable_itn=enable_itn,
+                            sample_rate=sample_rate,
+                        )
+
+                        for seg, text in zip(batch_segments, batch_texts):
+                            if text:
+                                speaker_id = getattr(seg, 'speaker_id', None)
+                                results.append(
+                                    ASRSegmentResult(
+                                        text=text,
+                                        start_time=seg.start_sec,
+                                        end_time=seg.end_sec,
+                                        speaker_id=speaker_id,
+                                    )
+                                )
+                                all_texts.append(text)
+
+                        logger.info(f"批次推理完成，有效片段: {len([t for t in batch_texts if t])}")
+
+                    except Exception as e:
+                        logger.error(f"批次推理失败: {e}, 跳过该批次")
 
             # 清理临时文件
             try:
