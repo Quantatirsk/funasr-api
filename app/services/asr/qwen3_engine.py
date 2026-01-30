@@ -43,6 +43,7 @@ class Qwen3ASREngine(BaseASREngine):
         forced_aligner_path: Optional[str] = None,
         max_inference_batch_size: int = 32,
         max_new_tokens: int = 1024,
+        max_model_len: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -55,6 +56,7 @@ class Qwen3ASREngine(BaseASREngine):
             forced_aligner_path: 时间戳对齐模型路径（可选）
             max_inference_batch_size: 最大批处理大小
             max_new_tokens: 最大生成 token 数
+            max_model_len: 最大模型序列长度（用于限制 KV 缓存）
         """
         if Qwen3ASRModel is None:
             raise ImportError(
@@ -77,17 +79,25 @@ class Qwen3ASREngine(BaseASREngine):
 
         logger.info(f"正在加载 Qwen3-ASR 模型: {model_path}")
         logger.info(f"设备: {self._device}, GPU 显存使用率: {gpu_memory_utilization}")
+        if max_model_len:
+            logger.info(f"最大序列长度限制: {max_model_len}")
 
         try:
+            # 构建 vLLM 初始化参数
+            llm_kwargs = {
+                "model": model_path,
+                "gpu_memory_utilization": gpu_memory_utilization,
+                "forced_aligner": forced_aligner_path,
+                "forced_aligner_kwargs": forced_aligner_kwargs,
+                "max_inference_batch_size": max_inference_batch_size,
+                "max_new_tokens": max_new_tokens,
+            }
+            # 添加 max_model_len（如果指定）
+            if max_model_len:
+                llm_kwargs["max_model_len"] = max_model_len
+
             # 使用 vLLM 后端初始化
-            self.model = Qwen3ASRModel.LLM(
-                model=model_path,
-                gpu_memory_utilization=gpu_memory_utilization,
-                forced_aligner=forced_aligner_path,
-                forced_aligner_kwargs=forced_aligner_kwargs,
-                max_inference_batch_size=max_inference_batch_size,
-                max_new_tokens=max_new_tokens,
-            )
+            self.model = Qwen3ASRModel.LLM(**llm_kwargs)
             logger.info(f"Qwen3-ASR 模型加载成功: {model_path}")
         except Exception as e:
             logger.error(f"Qwen3-ASR 模型加载失败: {e}")
