@@ -57,7 +57,7 @@ class AudioSplitter:
     """
 
     # 默认配置
-    DEFAULT_MAX_SEGMENT_SEC = 60.0  # 每段最大时长（秒）
+    DEFAULT_MAX_SEGMENT_SEC = 80.0  # 每段最大时长（秒）
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
 
