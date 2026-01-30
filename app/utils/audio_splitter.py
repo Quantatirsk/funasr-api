@@ -57,23 +57,23 @@ class AudioSplitter:
     """
 
     # 默认配置
-    DEFAULT_MAX_SEGMENT_SEC = 80.0  # 每段最大时长（秒）
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
 
     def __init__(
         self,
-        max_segment_sec: float = DEFAULT_MAX_SEGMENT_SEC,
         min_segment_sec: float = DEFAULT_MIN_SEGMENT_SEC,
         device: str = "auto",
     ):
         """初始化音频分割器
 
         Args:
-            max_segment_sec: 每段最大时长（秒）
             min_segment_sec: 每段最小时长（秒）
-            device: 计算设备
+            device: 计算设备（"cuda", "cpu", "auto"）
         """
+        # 从统一配置读取最大片段时长
+        max_segment_sec = settings.MAX_SEGMENT_SEC
+
         self.max_segment_sec = max_segment_sec
         self.min_segment_sec = min_segment_sec
         self.max_segment_ms = int(max_segment_sec * 1000)
@@ -342,21 +342,16 @@ class AudioSplitter:
 
 def split_long_audio(
     audio_path: str,
-    max_segment_sec: float = AudioSplitter.DEFAULT_MAX_SEGMENT_SEC,
     device: str = "auto",
 ) -> List[AudioSegment]:
     """分割长音频的便捷函数
 
     Args:
         audio_path: 音频文件路径
-        max_segment_sec: 每段最大时长（秒）
         device: 计算设备
 
     Returns:
         音频片段列表
     """
-    splitter = AudioSplitter(
-        max_segment_sec=max_segment_sec,
-        device=device,
-    )
+    splitter = AudioSplitter(device=device)
     return splitter.split_audio_file(audio_path)

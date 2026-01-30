@@ -79,15 +79,15 @@ def get_global_diarization_pipeline():
 class SpeakerDiarizer:
     """基于 CAM++ 的说话人分离器"""
 
-    DEFAULT_MAX_SEGMENT_SEC = 80.0
     DEFAULT_MIN_SEGMENT_SEC = 1.0
     DEFAULT_SAMPLE_RATE = 16000
 
     def __init__(
         self,
-        max_segment_sec: float = DEFAULT_MAX_SEGMENT_SEC,
         min_segment_sec: float = DEFAULT_MIN_SEGMENT_SEC,
     ):
+        # 从统一配置读取最大片段时长
+        max_segment_sec = settings.MAX_SEGMENT_SEC
         self.max_segment_sec = max_segment_sec
         self.min_segment_sec = min_segment_sec
         self.max_segment_ms = int(max_segment_sec * 1000)
