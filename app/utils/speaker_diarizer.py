@@ -208,47 +208,48 @@ class SpeakerDiarizer:
         merged = []
         skip_indices = set()
 
-        for i, seg in enumerate(sorted_segments):
-            if i in skip_indices:
-                continue
+        i = 0
+        while i < len(sorted_segments):
+            seg = sorted_segments[i]
 
             # 如果当前片段 >= 10s，直接添加
             if seg.duration_sec >= 10.0:
                 merged.append(seg)
+                i += 1
                 continue
 
-            # 当前片段 < 10s，查找后续同说话人片段
-            same_speaker_indices = [i]
-            for j in range(i + 1, len(sorted_segments)):
-                if sorted_segments[j].speaker_id == seg.speaker_id:
-                    same_speaker_indices.append(j)
-                else:
+            # 当前片段 < 10s，开始累积合并
+            current_start_ms = seg.start_ms
+            current_end_ms = seg.end_ms
+            current_duration_sec = seg.duration_sec
+            j = i + 1
+
+            # 只要 < 10s 就继续合并后续同说话人片段
+            while j < len(sorted_segments) and current_duration_sec < 10.0:
+                next_seg = sorted_segments[j]
+                if next_seg.speaker_id != seg.speaker_id:
                     break
+                # 合并
+                current_end_ms = next_seg.end_ms
+                current_duration_sec = (current_end_ms - current_start_ms) / 1000.0
+                j += 1
 
-            if len(same_speaker_indices) > 1:
-                # 有后续同说话人，合并到第一个后续片段
-                next_idx = same_speaker_indices[1]
-                next_seg = sorted_segments[next_idx]
+            # 创建合并后的片段
+            merged_seg = SpeakerSegment(
+                start_ms=current_start_ms,
+                end_ms=current_end_ms,
+                speaker_id=seg.speaker_id,
+            )
+            merged.append(merged_seg)
 
-                # 创建合并后的片段（从当前开始到后续片段的结束）
-                merged_seg = SpeakerSegment(
-                    start_ms=seg.start_ms,
-                    end_ms=next_seg.end_ms,
-                    speaker_id=seg.speaker_id,
-                )
-                merged.append(merged_seg)
-
-                # 只标记第一个后续片段为已跳过（被合并的那个）
-                skip_indices.add(next_idx)
-
+            if j > i + 1:
                 logger.debug(
-                    f"[短片段合并] {seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
-                    f"→ 合并到 {next_seg.start_sec:.2f}-{next_seg.end_sec:.2f}s，"
+                    f"[短片段合并] 从 {seg.start_sec:.2f}s 开始，"
+                    f"合并了 {j - i} 个片段，"
                     f"结果: {merged_seg.start_sec:.2f}-{merged_seg.end_sec:.2f}s ({merged_seg.duration_sec:.1f}s)"
                 )
-            else:
-                # 没有后续同说话人（是最后一个片段），保持原样
-                merged.append(seg)
+
+            i = j
 
         return merged
 
