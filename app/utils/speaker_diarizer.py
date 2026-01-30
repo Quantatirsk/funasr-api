@@ -206,42 +206,50 @@ class SpeakerDiarizer:
         # 按开始时间排序
         sorted_segments = sorted(segments, key=lambda x: x.start_ms)
 
-        # 第一层：<10s片段向后合并
+        # 第一层：<10s累积向后合并（循环计算直到>=10s或超过60s）
         merged = []
-        skip_indices = set()
-        for i, seg in enumerate(sorted_segments):
-            if i in skip_indices:
-                continue
+        i = 0
+        while i < len(sorted_segments):
+            seg = sorted_segments[i]
 
-            # 如果>=10s或最后一个，直接添加
-            if seg.duration_sec >= 10.0 or i == len(sorted_segments) - 1:
+            # 如果>=10s，直接添加
+            if seg.duration_sec >= 10.0:
                 merged.append(seg)
+                i += 1
                 continue
 
-            # <10s，尝试向后合并到同说话人
-            for j in range(i + 1, len(sorted_segments)):
+            # <10s，开始累积合并
+            current_start_ms = seg.start_ms
+            current_end_ms = seg.end_ms
+            current_duration_sec = seg.duration_sec
+            j = i + 1
+
+            # 累积合并，只要<10s且同说话人且不超过60s
+            while j < len(sorted_segments) and current_duration_sec < 10.0:
                 next_seg = sorted_segments[j]
                 if next_seg.speaker_id != seg.speaker_id:
                     break
-                combined_duration = (next_seg.end_ms - seg.start_ms) / 1000.0
-                if combined_duration <= 60.0:
-                    # 可以合并
-                    merged_seg = SpeakerSegment(
-                        start_ms=seg.start_ms,
-                        end_ms=next_seg.end_ms,
-                        speaker_id=seg.speaker_id,
-                    )
-                    merged.append(merged_seg)
-                    skip_indices.add(j)
-                    logger.debug(
-                        f"[第一层] {seg.speaker_id}: "
-                        f"{seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
-                        f"-> 合并到 {next_seg.start_sec:.2f}-{next_seg.end_sec:.2f}s"
-                    )
+                new_duration = (next_seg.end_ms - current_start_ms) / 1000.0
+                if new_duration > 60.0:  # 不能超过60s上限
                     break
-            else:
-                # 没找到可合并的，保留
-                merged.append(seg)
+                current_end_ms = next_seg.end_ms
+                current_duration_sec = new_duration
+                j += 1
+
+            # 创建合并后的片段
+            merged_seg = SpeakerSegment(
+                start_ms=current_start_ms,
+                end_ms=current_end_ms,
+                speaker_id=seg.speaker_id,
+            )
+            merged.append(merged_seg)
+
+            if j > i + 1:
+                logger.debug(
+                    f"[第一层] {seg.speaker_id}: "
+                    f"累积合并了 {j - i} 个片段，结果 {merged_seg.duration_sec:.1f}s"
+                )
+            i = j
 
         # 第二层：60s累积合并
         final_merged = []
