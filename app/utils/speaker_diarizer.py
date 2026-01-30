@@ -191,6 +191,68 @@ class SpeakerDiarizer:
             )
         return merged
 
+    def merge_short_segments(
+        self, segments: List[SpeakerSegment]
+    ) -> List[SpeakerSegment]:
+        """智能合并短片段
+
+        策略：
+        1. 如果当前片段 < 10秒，且与下一个是同一说话人 → 合并到下一个
+        2. 如果是某说话人的最后一个片段且 < 10秒 → 不处理（保持原样）
+        """
+        if not segments:
+            return []
+
+        # 按开始时间排序
+        sorted_segments = sorted(segments, key=lambda x: x.start_ms)
+        merged = []
+        skip_indices = set()
+
+        for i, seg in enumerate(sorted_segments):
+            if i in skip_indices:
+                continue
+
+            # 如果当前片段 >= 10s，直接添加
+            if seg.duration_sec >= 10.0:
+                merged.append(seg)
+                continue
+
+            # 当前片段 < 10s，查找后续同说话人片段
+            same_speaker_indices = [i]
+            for j in range(i + 1, len(sorted_segments)):
+                if sorted_segments[j].speaker_id == seg.speaker_id:
+                    same_speaker_indices.append(j)
+                else:
+                    break
+
+            if len(same_speaker_indices) > 1:
+                # 有后续同说话人，合并到第一个后续片段
+                next_idx = same_speaker_indices[1]
+                next_seg = sorted_segments[next_idx]
+
+                # 创建合并后的片段（从当前开始到后续片段的结束）
+                merged_seg = SpeakerSegment(
+                    start_ms=seg.start_ms,
+                    end_ms=next_seg.end_ms,
+                    speaker_id=seg.speaker_id,
+                )
+                merged.append(merged_seg)
+
+                # 标记后续同说话人片段为已跳过
+                for idx in same_speaker_indices[1:]:
+                    skip_indices.add(idx)
+
+                logger.debug(
+                    f"[短片段合并] {seg.start_sec:.2f}-{seg.end_sec:.2f}s ({seg.duration_sec:.1f}s) "
+                    f"→ 合并到 {next_seg.start_sec:.2f}-{next_seg.end_sec:.2f}s，"
+                    f"结果: {merged_seg.start_sec:.2f}-{merged_seg.end_sec:.2f}s ({merged_seg.duration_sec:.1f}s)"
+                )
+            else:
+                # 没有后续同说话人（是最后一个片段），保持原样
+                merged.append(seg)
+
+        return merged
+
     def split_long_segments(
         self,
         audio_path: str,
@@ -390,9 +452,9 @@ class SpeakerDiarizer:
                 logger.warning("说话人分离未检测到任何片段")
                 return []
 
-            # 2. 【测试模式】跳过合并，直接使用CAM++原始结果
-            logger.info(f"[测试模式] 跳过合并逻辑，直接使用CAM++原始结果: {len(raw_segments)} 个片段")
-            final_segments = raw_segments
+            # 2. 智能合并短片段（第一个<10s的同说话人片段向后合并）
+            final_segments = self.merge_short_segments(raw_segments)
+            logger.info(f"智能合并完成: {len(raw_segments)} → {len(final_segments)} 个片段")
 
             # 4. 加载音频并提取片段
             logger.info("加载音频并提取片段...")
