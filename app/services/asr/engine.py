@@ -46,6 +46,15 @@ class TempAutoModelWrapper:
 
 
 @dataclass
+class WordToken:
+    """字词级时间戳信息"""
+
+    text: str  # 字词文本
+    start_time: float  # 开始时间（秒）
+    end_time: float  # 结束时间（秒）
+
+
+@dataclass
 class ASRSegmentResult:
     """ASR 分段识别结果"""
 
@@ -53,6 +62,7 @@ class ASRSegmentResult:
     start_time: float  # 开始时间（秒）
     end_time: float  # 结束时间（秒）
     speaker_id: Optional[str] = None  # 说话人ID（多说话人模式）
+    word_tokens: Optional[List[WordToken]] = None  # 字词级时间戳（可选）
 
 
 @dataclass
@@ -144,8 +154,21 @@ class BaseASREngine(ABC):
         enable_punctuation: bool = True,
         enable_itn: bool = True,
         sample_rate: int = 16000,
+        **kwargs,
     ) -> ASRRawResult:
-        """使用 VAD 转录音频文件，返回带时间戳分段的结果"""
+        """使用 VAD 转录音频文件，返回带时间戳分段的结果
+
+        Args:
+            audio_path: 音频文件路径
+            hotwords: 热词/上下文提示
+            enable_punctuation: 是否启用标点
+            enable_itn: 是否启用 ITN
+            sample_rate: 采样率
+            **kwargs: 额外参数（如 word_timestamps 字词级时间戳）
+
+        Returns:
+            ASRRawResult 包含文本和分段信息
+        """
         pass
 
     def transcribe_long_audio(
@@ -156,6 +179,7 @@ class BaseASREngine(ABC):
         enable_itn: bool = False,
         sample_rate: int = 16000,
         enable_speaker_diarization: bool = True,
+        word_timestamps: bool = False,
     ) -> ASRFullResult:
         """转录长音频文件（自动分段）
 
@@ -166,13 +190,14 @@ class BaseASREngine(ABC):
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
             enable_speaker_diarization: 是否启用说话人分离
+            word_timestamps: 是否返回字词级时间戳（仅部分模型支持）
 
         Returns:
             ASRFullResult: 包含完整文本、分段结果和时长的结果
         """
         from ...utils.audio_splitter import AudioSplitter
 
-        logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}")
+        logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}")
 
         try:
             # 获取音频时长
@@ -187,6 +212,7 @@ class BaseASREngine(ABC):
                     enable_punctuation=enable_punctuation,
                     enable_itn=enable_itn,
                     sample_rate=sample_rate,
+                    word_timestamps=word_timestamps,
                 )
 
                 segments = raw_result.segments
@@ -582,6 +608,7 @@ class FunASREngine(RealTimeASREngine):
         enable_punctuation: bool = True,
         enable_itn: bool = True,
         sample_rate: int = 16000,
+        **kwargs,
     ) -> ASRRawResult:
         """使用 VAD 转录音频文件，返回带时间戳分段的结果
 
@@ -591,11 +618,13 @@ class FunASREngine(RealTimeASREngine):
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
+            **kwargs: 额外参数（如 word_timestamps 字词级时间戳）
 
         Returns:
             ASRRawResult: 包含文本和分段时间戳的结果
         """
         _ = sample_rate  # 当前未使用
+        _ = kwargs  # FunASR 暂不支持字词级时间戳，忽略此参数
 
         if not self.offline_model or not self._offline_loader:
             raise DefaultServerErrorException(

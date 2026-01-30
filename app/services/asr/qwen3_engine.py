@@ -12,7 +12,7 @@ from typing import Optional, List, Any, Tuple
 import torch
 import numpy as np
 
-from .engine import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult
+from .engine import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult, WordToken
 from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException
 from ...utils.audio import get_audio_duration
@@ -142,6 +142,7 @@ class Qwen3ASREngine(BaseASREngine):
         enable_punctuation: bool = True,
         enable_itn: bool = True,
         sample_rate: int = 16000,
+        word_timestamps: bool = True,
     ) -> ASRRawResult:
         """
         使用 VAD 转录音频文件，返回带时间戳分段的结果
@@ -152,9 +153,10 @@ class Qwen3ASREngine(BaseASREngine):
             enable_punctuation: 是否启用标点
             enable_itn: 是否启用 ITN
             sample_rate: 采样率
+            word_timestamps: 是否返回字词级时间戳（默认 True）
 
         Returns:
-            ASRRawResult 包含文本和分段信息
+            ASRRawResult 包含文本和分段信息，每个 segment 包含 word_tokens
         """
         try:
             results = self.model.transcribe(
@@ -168,7 +170,7 @@ class Qwen3ASREngine(BaseASREngine):
 
             result = results[0]
             segments = self._convert_timestamps_to_segments(
-                result.text, result.time_stamps
+                result.text, result.time_stamps, word_level=word_timestamps
             )
 
             return ASRRawResult(text=result.text or "", segments=segments)
@@ -178,16 +180,15 @@ class Qwen3ASREngine(BaseASREngine):
             raise DefaultServerErrorException(f"语音识别失败: {e}")
 
     def _convert_timestamps_to_segments(
-        self, text: str, time_stamps: Any
+        self, text: str, time_stamps: Any, word_level: bool = True
     ) -> List[ASRSegmentResult]:
         """
         将 Qwen3-ASR 时间戳转换为内部分段格式
 
-        Qwen3-ASR 输出字级时间戳，我们需要聚合成句子级别
-
         Args:
             text: 完整识别文本
             time_stamps: Qwen3-ForcedAligner 返回的时间戳对象
+            word_level: 是否包含字词级时间戳（默认 True）
 
         Returns:
             ASRSegmentResult 列表
@@ -208,24 +209,36 @@ class Qwen3ASREngine(BaseASREngine):
         current_text = ""
         current_start = items[0].start_time if items else 0.0
         current_end = 0.0
+        current_word_tokens: List[WordToken] = []
 
         for i, item in enumerate(items):
             char = item.text
             current_text += char
             current_end = item.end_time
 
+            # 收集字词级时间戳
+            if word_level:
+                current_word_tokens.append(
+                    WordToken(
+                        text=char,
+                        start_time=round(item.start_time, 3),
+                        end_time=round(item.end_time, 3),
+                    )
+                )
+
             # 遇到句子分隔符或最后一个字，保存当前句子
             if char in sentence_breaks or i == len(items) - 1:
                 if current_text.strip():
-                    segments.append(
-                        ASRSegmentResult(
-                            text=current_text.strip(),
-                            start_time=round(current_start, 2),
-                            end_time=round(current_end, 2),
-                        )
+                    segment = ASRSegmentResult(
+                        text=current_text.strip(),
+                        start_time=round(current_start, 2),
+                        end_time=round(current_end, 2),
+                        word_tokens=current_word_tokens if word_level else None,
                     )
+                    segments.append(segment)
                 # 重置
                 current_text = ""
+                current_word_tokens = []
                 if i < len(items) - 1:
                     current_start = items[i + 1].start_time
 

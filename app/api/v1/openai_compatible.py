@@ -288,6 +288,10 @@ async def create_transcription(
         True,
         description="是否启用说话人分离（默认开启）。启用后响应 segments 会包含 speaker 字段"
     ),
+    word_timestamps: bool = Form(
+        False,
+        description="是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）"
+    ),
     # 5. 输出选项
     response_format: ResponseFormat = Form(
         ResponseFormat.JSON,
@@ -310,7 +314,8 @@ async def create_transcription(
     audio_path = None
     normalized_audio_path = None
 
-    logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}, speaker_diarization={enable_speaker_diarization}")
+    logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}, "
+                f"speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}")
 
     try:
         # 可选鉴权 (支持 Bearer Token)
@@ -373,12 +378,14 @@ async def create_transcription(
             enable_itn=True,
             sample_rate=16000,
             enable_speaker_diarization=enable_speaker_diarization,
+            word_timestamps=word_timestamps,
         )
 
         logger.info(f"[OpenAI API] 识别完成: {len(asr_result.text)} 字符")
 
         # 构建分段信息
         segments = []
+        words = []
         for i, seg in enumerate(asr_result.segments):
             segments.append(TranscriptionSegment(
                 id=i,
@@ -388,6 +395,14 @@ async def create_transcription(
                 text=seg.text,
                 speaker=seg.speaker_id,
             ))
+            # 收集字词级时间戳
+            if seg.word_tokens:
+                for wt in seg.word_tokens:
+                    words.append(TranscriptionWord(
+                        word=wt.text,
+                        start=wt.start_time,
+                        end=wt.end_time,
+                    ))
 
         # 检测语言 (简单实现)
         detected_language = language or "zh"
@@ -433,6 +448,7 @@ async def create_transcription(
                 duration=audio_duration,
                 text=asr_result.text,
                 segments=[seg.model_dump() for seg in segments],
+                words=[w.model_dump() for w in words] if words else None,
             ).model_dump())
 
         else:  # JSON (默认)

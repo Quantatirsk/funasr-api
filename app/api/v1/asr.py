@@ -311,6 +311,7 @@ async def asr_transcribe(
             enable_itn=True,  # 默认开启数字转换
             sample_rate=params.sample_rate,
             enable_speaker_diarization=params.enable_speaker_diarization if params.enable_speaker_diarization is not None else True,
+            word_timestamps=params.word_timestamps if params.word_timestamps is not None else False,
         )
 
         logger.info(f"[{task_id}] 识别完成，共 {len(asr_result.segments)} 个分段，总字符: {len(asr_result.text)}")
@@ -325,6 +326,16 @@ async def asr_transcribe(
             }
             if seg.speaker_id:
                 seg_dict["speaker_id"] = seg.speaker_id
+            # 添加字词级时间戳（如果存在）
+            if seg.word_tokens:
+                seg_dict["word_tokens"] = [
+                    {
+                        "text": wt.text,
+                        "start_time": round(wt.start_time, 3),
+                        "end_time": round(wt.end_time, 3),
+                    }
+                    for wt in seg.word_tokens
+                ]
             segments_data.append(seg_dict)
 
         # 返回成功响应（统一数据结构）

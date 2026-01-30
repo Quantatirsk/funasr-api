@@ -47,6 +47,11 @@ class ASRQueryParams(BaseModel):
         description="是否启用说话人分离。启用后响应会包含 speaker_id",
     )
 
+    word_timestamps: Optional[bool] = Field(
+        default=False,
+        description="是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）",
+    )
+
     # 5. 增强选项
     vocabulary_id: Optional[str] = Field(
         default=None,
@@ -64,6 +69,33 @@ class ASRQueryParams(BaseModel):
 
 
 # ============= 响应模型 =============
+
+
+class WordToken(BaseModel):
+    """字词级时间戳信息"""
+
+    text: str = Field(
+        ...,
+        description="字词文本",
+    )
+    start_time: float = Field(
+        ...,
+        description="开始时间（秒）",
+    )
+    end_time: float = Field(
+        ...,
+        description="结束时间（秒）",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "text": "今",
+                "start_time": 0.0,
+                "end_time": 0.15,
+            }
+        }
+    }
 
 
 class ASRSegment(BaseModel):
@@ -85,6 +117,10 @@ class ASRSegment(BaseModel):
         default=None,
         description="说话人ID（如 说话人1），仅启用说话人分离时返回",
     )
+    word_tokens: Optional[List[WordToken]] = Field(
+        default=None,
+        description="字词级时间戳（仅启用 word_timestamps 且模型支持时返回）",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -93,6 +129,10 @@ class ASRSegment(BaseModel):
                 "start_time": 0.0,
                 "end_time": 2.5,
                 "speaker_id": "说话人1",
+                "word_tokens": [
+                    {"text": "今", "start_time": 0.0, "end_time": 0.15},
+                    {"text": "天", "start_time": 0.15, "end_time": 0.35},
+                ],
             }
         }
     }
