@@ -213,13 +213,13 @@ class SpeakerDiarizer:
             current_duration_sec = seg.duration_sec
             j = i + 1
 
-            # 累积合并，只要 <= 20s 且同说话人
+            # 累积合并，只要 <= 30s 且同说话人
             while j < len(sorted_segments):
                 next_seg = sorted_segments[j]
                 if next_seg.speaker_id != seg.speaker_id:
                     break
                 new_duration = (next_seg.end_ms - current_start_ms) / 1000.0
-                if new_duration > 20.0:
+                if new_duration > 30.0:
                     break
                 # 可以合并
                 current_end_ms = next_seg.end_ms
