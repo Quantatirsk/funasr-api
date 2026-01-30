@@ -196,10 +196,10 @@ class SpeakerDiarizer:
         audio_path: str,
         segments: List[SpeakerSegment]
     ) -> List[SpeakerSegment]:
-        """将超过最大时长的片段使用VAD智能切分，并贪婪合并可合并的连续片段
+        """将超过最大时长的片段使用VAD智能切分
 
         利用 AudioSplitter 的 VAD 能力，按语音边界切分，
-        避免在说话中间切断。同时在处理过程中贪婪合并同一说话人的连续片段。
+        避免在说话中间切断。
         """
         from .audio_splitter import AudioSplitter
 
@@ -210,15 +210,7 @@ class SpeakerDiarizer:
         all_vad_segments = None
 
         for seg in segments:
-            # 核心优化：先尝试和result中最后一个片段合并
-            if self._try_merge_with_last(result, seg):
-                logger.debug(
-                    f"[贪婪合并成功] {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
-                    f"合并到前一个片段，新范围: {result[-1].start_sec:.2f}-{result[-1].end_sec:.2f}s"
-                )
-                continue  # 合并成功，处理下一个片段
-
-            # 不能合并，检查是否需要切分
+            # 检查是否需要切分
             if seg.duration_ms <= self.max_segment_ms:
                 logger.debug(
                     f"[直接添加] {seg.start_sec:.2f}-{seg.end_sec:.2f}s "
@@ -252,28 +244,25 @@ class SpeakerDiarizer:
                             f"[VAD切分] {seg.speaker_id} "
                             f"{seg.start_sec:.2f}-{seg.end_sec:.2f}s → {len(sub_segments)} 个子片段"
                         )
-                        # 逐个添加子片段，尝试与前一个片段合并
+                        # 逐个添加子片段
                         for i, sub_seg in enumerate(sub_segments):
                             logger.debug(
                                 f"  子片段{i}: {sub_seg.start_sec:.2f}-{sub_seg.end_sec:.2f}s "
                                 f"({sub_seg.duration_sec:.2f}s)"
                             )
-                            if not self._try_merge_with_last(result, sub_seg):
-                                result.append(sub_seg)
+                            result.append(sub_seg)
                     else:
                         # VAD 未检测到语音，fallback 到硬切
                         logger.warning(f"VAD 未检测到语音边界，fallback 到硬切")
                         hard_split_segments = self._hard_split_segment(seg)
                         for sub_seg in hard_split_segments:
-                            if not self._try_merge_with_last(result, sub_seg):
-                                result.append(sub_seg)
+                            result.append(sub_seg)
 
                 except Exception as e:
                     logger.error(f"VAD 切分失败，fallback 到硬切: {e}")
                     hard_split_segments = self._hard_split_segment(seg)
                     for sub_seg in hard_split_segments:
-                        if not self._try_merge_with_last(result, sub_seg):
-                            result.append(sub_seg)
+                        result.append(sub_seg)
 
         logger.info(f"切分并合并完成: {len(segments)} → {len(result)}")
         # 诊断日志：打印最终的前30个片段
@@ -283,50 +272,6 @@ class SpeakerDiarizer:
                 f"({seg.duration_sec:.2f}s) {seg.speaker_id}"
             )
         return result
-
-    def _try_merge_with_last(
-        self,
-        result: List[SpeakerSegment],
-        seg: SpeakerSegment
-    ) -> bool:
-        """尝试将seg合并到result的最后一个片段
-
-        Args:
-            result: 已处理的片段列表
-            seg: 待合并的片段
-
-        Returns:
-            True if merged, False otherwise
-        """
-        if not result:
-            return False
-
-        last = result[-1]
-
-        # 必须是同一说话人
-        if last.speaker_id != seg.speaker_id:
-            logger.debug(
-                f"[合并失败-说话人] {last.speaker_id} != {seg.speaker_id} "
-                f"at {seg.start_sec:.2f}s"
-            )
-            return False
-
-        # 检查合并后是否超过最大时长
-        merged_duration_ms = seg.end_ms - last.start_ms
-        if merged_duration_ms > self.max_segment_ms:
-            logger.debug(
-                f"[合并失败-超时] {last.start_sec:.2f}-{seg.end_sec:.2f}s = "
-                f"{merged_duration_ms/1000:.2f}s > {self.max_segment_sec}s"
-            )
-            return False
-
-        # 可以合并，直接扩展最后一个片段的结束时间
-        last.end_ms = seg.end_ms
-        logger.debug(
-            f"[合并成功] {last.speaker_id} "
-            f"{last.start_ms}-{last.end_ms}ms ({merged_duration_ms/1000:.2f}s)"
-        )
-        return True
 
     def _merge_vad_for_speaker(
         self,
