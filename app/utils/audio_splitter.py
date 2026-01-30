@@ -57,7 +57,7 @@ class AudioSplitter:
     """
 
     # 默认配置
-    DEFAULT_MAX_SEGMENT_SEC = 55.0  # 每段最大时长（秒），留5秒余量
+    DEFAULT_MAX_SEGMENT_SEC = 60.0  # 每段最大时长（秒）
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
 
@@ -355,5 +355,8 @@ def split_long_audio(
     Returns:
         音频片段列表
     """
-    splitter = AudioSplitter(max_segment_sec=max_segment_sec, device=device)
+    splitter = AudioSplitter(
+        max_segment_sec=max_segment_sec,
+        device=device,
+    )
     return splitter.split_audio_file(audio_path)

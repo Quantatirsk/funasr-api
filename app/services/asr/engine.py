@@ -936,9 +936,10 @@ def get_global_vad_model(device: str):
                 _global_vad_model = AutoModel(
                     model=resolved_vad_path,
                     device=device,
+                    speech_noise_thres=0.7,  # VAD 语音噪声阈值（FunASR默认0.6，设为0.7稍微严格一些，分段更碎）
                     **settings.FUNASR_AUTOMODEL_KWARGS,
                 )
-                logger.info("全局语音活动检测(VAD)模型加载成功")
+                logger.info("全局语音活动检测(VAD)模型加载成功 (speech_noise_thres=0.7)")
             except Exception as e:
                 logger.error(f"全局语音活动检测(VAD)模型加载失败: {str(e)}")
                 _global_vad_model = None
