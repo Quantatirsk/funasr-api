@@ -7,7 +7,7 @@
             "languages": [
                 "zh"
             ],
-            "default": true,
+            "default": false,
             "supports_realtime": true,
             "models": {
                 "offline": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
@@ -58,6 +58,7 @@
                 "vi"
             ],
             "default": false,
+            "default": true,
             "supports_realtime": false,
             "models": {
                 "offline": "Qwen/Qwen3-ASR-1.7B"
