@@ -62,13 +62,13 @@ def _get_qwen_model_to_download() -> list[tuple[str, str]]:
             if torch.cuda.is_available():
                 total_vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
                 if total_vram >= 24:
-                    print(f"检测到显存 {total_vram:.1f}GB >= 24GB，下载 Qwen3-ASR-1.7B")
+                    print(f"检测到显存 {total_vram:.1f}GB >= 24GB，加载 Qwen3-ASR-1.7B")
                     return [
                         ("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B (vLLM 后端，自动选择)"),
                         ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
                     ]
                 else:
-                    print(f"检测到显存 {total_vram:.1f}GB < 24GB，下载 Qwen3-ASR-0.6B")
+                    print(f"检测到显存 {total_vram:.1f}GB < 24GB，加载 Qwen3-ASR-0.6B")
                     return [
                         ("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B (vLLM 后端，轻量版，自动选择)"),
                         ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
