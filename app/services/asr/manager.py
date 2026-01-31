@@ -304,7 +304,7 @@ class ModelManager:
 
         # 流式模式使用独立的引擎实例（避免状态干扰）
         engine_key = model_id
-        if streaming and model_id == "qwen3-asr-1.7b":
+        if streaming and model_id in ["qwen3-asr-1.7b", "qwen3-asr-0.6b"]:
             engine_key = f"{model_id}-streaming"
             logger.debug(f"使用流式专用引擎: {engine_key}")
 
