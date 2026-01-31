@@ -220,27 +220,42 @@ class ModelManager:
 
         return models
 
-    def get_asr_engine(self, model_id: Optional[str] = None) -> BaseASREngine:
-        """获取ASR引擎"""
+    def get_asr_engine(self, model_id: Optional[str] = None, streaming: bool = False) -> BaseASREngine:
+        """
+        获取ASR引擎
+
+        Args:
+            model_id: 模型ID
+            streaming: 是否用于流式识别（为Qwen3-ASR创建独立实例）
+
+        Returns:
+            ASR引擎实例
+        """
         if model_id is None:
             model_id = self._default_model_id
 
         if not model_id:
             raise InvalidParameterException("未指定模型且没有默认模型")
 
+        # 流式模式使用独立的引擎实例（避免状态干扰）
+        engine_key = model_id
+        if streaming and model_id == "qwen3-asr-1.7b":
+            engine_key = f"{model_id}-streaming"
+            logger.debug(f"使用流式专用引擎: {engine_key}")
+
         # 检查是否已加载
-        engine = self._loaded_engines.get(model_id)
+        engine = self._loaded_engines.get(engine_key)
         if engine is not None:
-            logger.debug(f"从缓存获取模型: {model_id}")
+            logger.debug(f"从缓存获取模型: {engine_key}")
             return engine
 
         # 加载新模型
-        logger.info(f"加载模型: {model_id}")
+        logger.info(f"加载模型: {engine_key}")
         config = self.get_model_config(model_id)
         engine = self._create_engine(config)
 
         # 缓存引擎
-        self._loaded_engines.put(model_id, engine)
+        self._loaded_engines.put(engine_key, engine)
 
         return engine
 

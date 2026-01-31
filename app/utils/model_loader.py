@@ -148,6 +148,23 @@ def preload_models() -> dict:
                     result["asr_models"][model_id]["error"] = "模型加载后未正确初始化"
                     logger.warning(f"⚠️  ASR模型 {model_id} 加载后未正确初始化")
 
+                # 为 Qwen3-ASR 加载流式专用实例（完全隔离状态）
+                if model_id == "qwen3-asr-1.7b":
+                    streaming_key = f"{model_id}-streaming"
+                    result["asr_models"][streaming_key] = {"loaded": False, "error": None}
+                    try:
+                        logger.info(f"📥 正在加载ASR模型流式实例: {streaming_key}...")
+                        streaming_engine = model_manager.get_asr_engine(model_id, streaming=True)
+                        if streaming_engine.is_model_loaded():
+                            result["asr_models"][streaming_key]["loaded"] = True
+                            logger.info(f"✅ ASR模型流式实例加载成功: {streaming_key}")
+                        else:
+                            result["asr_models"][streaming_key]["error"] = "模型加载后未正确初始化"
+                            logger.warning(f"⚠️  ASR模型流式实例 {streaming_key} 加载后未正确初始化")
+                    except Exception as e:
+                        result["asr_models"][streaming_key]["error"] = str(e)
+                        logger.error(f"❌ ASR模型流式实例 {streaming_key} 加载失败: {e}")
+
             except Exception as e:
                 result["asr_models"][model_id]["error"] = str(e)
                 logger.error(f"❌ ASR模型 {model_id} 加载失败: {e}")
