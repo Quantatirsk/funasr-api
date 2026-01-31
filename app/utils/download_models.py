@@ -7,18 +7,13 @@
 
 import os
 
-# 设置环境变量，避免不必要的输出
-os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "0"  # 下载时显示进度
-
-# 设置 ModelScope 缓存目录（如果未设置）
-if "MODELSCOPE_CACHE" not in os.environ:
-    default_cache = os.path.expanduser("~/.cache/modelscope")
-    os.environ["MODELSCOPE_CACHE"] = default_cache
+# 强制使用统一的模型缓存路径，避免 MODELSCOPE_CACHE 环境变量干扰
+# 标准路径: ~/.cache/modelscope/hub/models/{model_id}/
+MODELSCOPE_BASE_PATH = os.path.expanduser("~/.cache/modelscope")
 
 # 设置 HuggingFace 缓存目录（如果未设置）
 if "HF_HOME" not in os.environ:
-    default_hf_home = os.path.expanduser("~/.cache/huggingface")
-    os.environ["HF_HOME"] = default_hf_home
+    os.environ["HF_HOME"] = os.path.expanduser("~/.cache/huggingface")
 
 
 # 模型版本控制已移除，全部使用 ModelScope 默认版本
@@ -45,7 +40,10 @@ HUGGINGFACE_MODELS = [
 
 
 def check_model_exists(model_id: str, cache_dir: str) -> tuple[bool, str]:
-    """检查 ModelScope 模型是否已存在于本地缓存"""
+    """检查 ModelScope 模型是否已存在于本地缓存
+
+    标准路径: ~/.cache/modelscope/hub/models/{model_id}/
+    """
     from pathlib import Path
 
     model_path = Path(cache_dir) / "hub" / "models" / model_id
@@ -78,7 +76,7 @@ def check_all_models() -> tuple[list[str], list[str]]:
     Returns:
         (missing_ms_models, missing_hf_models) - 缺失的模型ID列表
     """
-    cache_dir = os.environ.get('MODELSCOPE_CACHE', os.path.expanduser('~/.cache/modelscope'))
+    cache_dir = MODELSCOPE_BASE_PATH
     hf_cache_dir = os.environ.get('HF_HOME', os.path.expanduser('~/.cache/huggingface'))
 
     missing_ms = []
@@ -107,7 +105,7 @@ def download_models(auto_mode: bool = False) -> bool:
     """
     from modelscope.hub.snapshot_download import snapshot_download
 
-    cache_dir = os.environ.get('MODELSCOPE_CACHE', os.path.expanduser('~/.cache/modelscope'))
+    cache_dir = MODELSCOPE_BASE_PATH
     hf_cache_dir = os.environ.get('HF_HOME', os.path.expanduser('~/.cache/huggingface'))
 
     # 检查缺失的模型
@@ -150,7 +148,8 @@ def download_models(auto_mode: bool = False) -> bool:
                 print(f"    📥 开始下载...", end="")
 
             try:
-                path = snapshot_download(model_id)
+                # 显式指定缓存目录，确保下载到标准路径
+                path = snapshot_download(model_id, cache_dir=MODELSCOPE_BASE_PATH)
                 if not auto_mode:
                     print(f" ✅ 完成: {path}")
                 downloaded.append(f"MS:{model_id}")

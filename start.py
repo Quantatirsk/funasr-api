@@ -26,6 +26,11 @@ def check_and_download_models() -> bool:
         for mid in missing_hf:
             print(f"  - {mid}")
 
+        # 检测是否为交互式终端（Docker 环境跳过询问）
+        if not sys.stdin.isatty():
+            print("\n非交互式终端，自动下载模型...")
+            return download_models(auto_mode=True)
+
         response = input("\n自动下载? [Y/n] ").strip().lower()
         if response in ("", "y", "yes"):
             success = download_models(auto_mode=True)
