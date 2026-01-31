@@ -36,7 +36,7 @@ def get_registered_engine_types() -> List[str]:
 
 
 class LRUModelCache(OrderedDict):
-    """LRU模型缓存，限制同时加载的模型数量"""
+    """LRU模型缓存，基于GPU内存阈值自动清理（无容量限制）"""
 
     def __init__(self, capacity: int = 3, memory_threshold_gb: float = 6.0):
         super().__init__()
@@ -64,11 +64,8 @@ class LRUModelCache(OrderedDict):
                 self.move_to_end(key)
                 self[key] = value
             else:
-                # 检查内存并清理
+                # 检查内存并清理（仅基于GPU内存阈值，不限制模型数量）
                 self._check_memory_and_evict_if_needed()
-                # 如果达到容量限制，淘汰最久未使用的
-                if len(self) >= self._capacity:
-                    self._evict_lru_model()
                 self[key] = value
 
     def _evict_lru_model(self) -> None:
@@ -179,7 +176,7 @@ class ModelConfig:
 
 
 class ModelManager:
-    """模型管理器，支持多模型缓存"""
+    """模型管理器，支持多模型缓存（无模型数量限制，仅受GPU内存阈值约束）"""
 
     def __init__(
         self,
@@ -190,7 +187,7 @@ class ModelManager:
         self._max_loaded_models = max_loaded_models
         self._memory_threshold_gb = memory_threshold_gb
         self._loaded_engines = LRUModelCache(
-            capacity=max_loaded_models,
+            capacity=max_loaded_models,  # 保留参数但不再作为硬限制
             memory_threshold_gb=memory_threshold_gb,
         )
         self._default_model_id: Optional[str] = None
