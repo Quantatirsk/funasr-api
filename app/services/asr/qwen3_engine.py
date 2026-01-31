@@ -514,12 +514,8 @@ def _register_qwen3_engine(register_func, model_config_cls):
     from app.core.config import settings
 
     def _create_qwen3_engine(config) -> "Qwen3ASREngine":
-        # 分离 extra_kwargs，移除 gpu_memory_utilization 让它自动检测
-        # 除非用户显式在环境变量中强制指定
+        # 使用 extra_kwargs 中的配置，允许 models.json 覆盖默认行为
         extra_kwargs = dict(config.extra_kwargs)
-        # 删除 gpu_memory_utilization，让引擎根据模型大小自动设置
-        # 如果需要强制指定，可以通过修改代码或添加新的配置方式
-        extra_kwargs.pop("gpu_memory_utilization", None)
 
         return Qwen3ASREngine(
             model_path=config.models.get("offline"),
