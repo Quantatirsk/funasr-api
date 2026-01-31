@@ -410,13 +410,13 @@ async def create_transcription(
                 text=seg.text,
                 speaker=seg.speaker_id,
             ))
-            # 收集字词级时间戳
+            # 收集字词级时间戳（加上 segment 起始时间，转换为全局时间戳）
             if seg.word_tokens:
                 for wt in seg.word_tokens:
                     words.append(TranscriptionWord(
                         word=wt.text,
-                        start=wt.start_time,
-                        end=wt.end_time,
+                        start=round(seg.start_time + wt.start_time, 3),
+                        end=round(seg.start_time + wt.end_time, 3),
                     ))
 
         # 检测语言 (简单实现)
