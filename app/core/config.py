@@ -33,7 +33,8 @@ class Settings:
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     TEMP_DIR: str = "temp"
     DATA_DIR: str = "data"  # 数据持久化目录
-    MODELSCOPE_PATH: str = os.path.expanduser("~/.cache/modelscope/hub")
+    # ModelScope 默认缓存结构: ~/.cache/modelscope/hub/models/{model_id}
+    MODELSCOPE_PATH: str = os.path.expanduser("~/.cache/modelscope/hub/models")
 
     # 日志配置
     LOG_LEVEL: str = "INFO"

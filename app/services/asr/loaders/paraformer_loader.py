@@ -43,20 +43,14 @@ class ParaformerModelLoader(BaseModelLoader):
 
     def _resolve_model_path(self, model_id: str) -> str:
         """解析模型路径，优先使用本地缓存"""
-        import os
         from pathlib import Path
+        from app.core.config import settings
 
-        # ModelScope 缓存目录
-        cache_dir = os.environ.get("MODELSCOPE_CACHE", os.path.expanduser("~/.cache/modelscope"))
+        # 标准 ModelScope 路径: ~/.cache/modelscope/hub/models/{model_id}
+        local_path = Path(settings.MODELSCOPE_PATH) / model_id
 
-        possible_paths = [
-            Path(cache_dir) / "hub" / model_id,
-            Path(cache_dir) / "models" / model_id,
-        ]
-
-        for local_path in possible_paths:
-            if local_path.exists() and local_path.is_dir():
-                return str(local_path)
+        if local_path.exists() and local_path.is_dir():
+            return str(local_path)
 
         return model_id
 
