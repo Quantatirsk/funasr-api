@@ -159,6 +159,7 @@ class ModelManager:
             选择的模型ID，如果不是 Qwen 模型则返回现有默认
         """
         model_config = settings.QWEN_ASR_MODEL
+        logger.info(f"QWEN_ASR_MODEL 配置: {model_config}")
 
         # 直接指定模型ID
         if model_config == "Qwen3-ASR-1.7B":
@@ -171,10 +172,15 @@ class ModelManager:
                 return "qwen3-asr-0.6b"
         elif model_config == "auto":
             # 自动检测显存
+            logger.info("自动检测显存选择模型...")
             selected = self._auto_select_by_vram()
             if selected:
+                logger.info(f"自动选择结果: {selected}")
                 return selected
+            else:
+                logger.warning("自动检测失败，使用默认模型")
 
+        logger.info(f"使用默认模型: {self._default_model_id}")
         return self._default_model_id
 
     def _auto_select_by_vram(self) -> Optional[str]:
@@ -189,8 +195,16 @@ class ModelManager:
                 logger.info("无 CUDA，使用 Qwen3-ASR-0.6B")
                 return "qwen3-asr-0.6b" if "qwen3-asr-0.6b" in self._models_config else None
 
-            total_vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
-            logger.info(f"检测到显存: {total_vram:.1f}GB")
+            # 获取所有 GPU 的显存，使用最小的那个
+            gpu_count = torch.cuda.device_count()
+            min_vram = float('inf')
+            for i in range(gpu_count):
+                vram = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                logger.info(f"GPU {i}: {torch.cuda.get_device_name(i)} - {vram:.1f}GB")
+                min_vram = min(min_vram, vram)
+
+            total_vram = min_vram  # 使用最小显存作为限制
+            logger.info(f"检测到最小显存: {total_vram:.1f}GB (用于模型选择)")
 
             if total_vram >= 24:
                 if "qwen3-asr-1.7b" in self._models_config:
