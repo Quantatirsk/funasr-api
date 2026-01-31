@@ -75,7 +75,7 @@
                 "offline": "Qwen/Qwen3-ASR-0.6B"
             },
             "extra_kwargs": {
-                "gpu_memory_utilization": 0.4,
+                "gpu_memory_utilization": 0.3,
                 "max_model_len": 8192,
                 "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
                 "max_inference_batch_size": 16,
