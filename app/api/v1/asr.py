@@ -95,24 +95,25 @@ def _get_model_schema() -> dict:
 
 def update_openapi_schema():
     """在应用启动时更新 OpenAPI schema，使其包含正确的模型列表"""
+    from fastapi.routing import APIRoute
+
     model_schema = _get_model_schema()
     default_model = model_schema.get("default", "qwen3-asr-1.7b")
 
     # 找到 asr_transcribe 路由并更新其 openapi_extra
     for route in router.routes:
-        if hasattr(route, "endpoint") and route.endpoint.__name__ == "asr_transcribe":
-            if hasattr(route, "openapi_extra") and route.openapi_extra:
+        if isinstance(route, APIRoute) and route.endpoint.__name__ == "asr_transcribe":
+            if route.openapi_extra:
                 params = route.openapi_extra.get("parameters", [])
                 for param in params:
                     if param.get("name") == "model_id":
                         param["schema"] = model_schema
                         param["description"] = f"ASR 模型 ID。可选值：{', '.join(model_schema['enum'])}（默认：{default_model}）"
                 # 同时更新 description 中的模型说明
-                if hasattr(route, "description"):
-                    route.description = route.description.replace(
-                        "- **qwen3-asr-1.7b**（默认）",
-                        f"- **{default_model}**（默认）"
-                    )
+                route.description = route.description.replace(
+                    "- **qwen3-asr-1.7b**（默认）",
+                    f"- **{default_model}**（默认）"
+                )
             break
 
 
@@ -174,8 +175,9 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 - 最大文件大小：{settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB（可通过环境变量 MAX_AUDIO_SIZE 配置）
 
 ## 可用模型
-- **qwen3-asr-1.7b**（默认）：Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能
-- **paraformer-large**：高精度中文语音识别，内置VAD+标点
+- **qwen3-asr-1.7b**（默认）：Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能（离线）
+- **qwen3-asr-0.6b**：Qwen3-ASR 0.6B，轻量版多语言，适合小显存（离线）
+- **paraformer-large**：高精度中文语音识别，内置VAD+标点（离线/实时）
 
 ## 音频输入方式
 1. **请求体上传**：将音频二进制数据作为请求体发送
@@ -196,10 +198,10 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                     "type": "string",
                     "maxLength": 64,
                     "default": "qwen3-asr-1.7b",
-                    "enum": ["qwen3-asr-1.7b", "paraformer-large"],
+                    "enum": ["qwen3-asr-1.7b", "qwen3-asr-0.6b", "paraformer-large"],
                     "example": "qwen3-asr-1.7b",
                 },
-                "description": "ASR 模型 ID。可选值：qwen3-asr-1.7b（默认，高性能52语言）、paraformer-large（高精度中文）",
+                "description": "ASR 模型 ID。可选值：qwen3-asr-1.7b（默认，高性能52语言）、qwen3-asr-0.6b（轻量版）、paraformer-large（高精度中文、支持实时）",
             },
             # 2. 输入源
             {
@@ -511,7 +513,8 @@ async def health_check(request: Request):
 
 | 模型 ID | 名称 | 说明 | 支持实时 |
 |---------|------|------|----------|
-| qwen3-asr-1.7b | Qwen3-ASR 1.7B | 高性能多语言语音识别，vLLM后端，52种语言+方言 | ✅ |
+| qwen3-asr-1.7b | Qwen3-ASR 1.7B | 高性能多语言语音识别，vLLM后端，52种语言+方言 | ❌ |
+| qwen3-asr-0.6b | Qwen3-ASR 0.6B | 轻量版多语言ASR，适合小显存环境 | ❌ |
 | paraformer-large | Paraformer Large | 高精度中文语音识别 | ✅ |
 
 ## 返回信息

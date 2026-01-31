@@ -17,7 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -116,7 +116,7 @@ class ConnectionContext:
     # VAD 和音频管理
     silence_samples: int = 0  # 连续静音样本数
     total_samples: int = 0  # 总音频样本数
-    confirmed_segments: list = field(default_factory=list)  # 已确认的识别段落
+    confirmed_segments: List = field(default_factory=list)  # 已确认的识别段落
     segment_index: int = 0  # 当前段落索引
 
     # 常数配置
@@ -502,7 +502,11 @@ class Qwen3WebSocketASRService:
             if sample_rate != 16000:
                 import scipy.signal
                 num_samples = int(len(audio_array) * 16000 / sample_rate)
-                audio_array = scipy.signal.resample(audio_array, num_samples)
+                resampled = scipy.signal.resample(audio_array, num_samples)
+                if isinstance(resampled, tuple):
+                    audio_array = resampled[0]
+                else:
+                    audio_array = resampled
 
             return audio_array
 

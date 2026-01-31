@@ -1,6 +1,6 @@
 <div align="center">
 
-  <h3>开箱即用的本地私有化部署语音识别服务</h3>
+<h3>开箱即用的本地私有化部署语音识别服务</h3>
 
 基于 FunASR 的语音识别 API 服务，提供高精度中文语音识别(ASR)功能，兼容阿里云语音 API 和 OpenAI Audio API。
 
@@ -14,7 +14,7 @@
 
 ## 主要特性
 
-- **多模型支持** - 集成 Qwen3-ASR 1.7B 和 Paraformer Large 高质量 ASR 模型
+- **多模型支持** - 集成 Qwen3-ASR 1.7B、Qwen3-ASR 0.6B 和 Paraformer Large 高质量 ASR 模型
 - **说话人分离** - 基于 CAM++ 模型自动识别多说话人，返回说话人标记
 - **OpenAI API 兼容** - 支持 `/v1/audio/transcriptions` 端点，可直接使用 OpenAI SDK
 - **阿里云 API 兼容** - 支持阿里云语音识别 RESTful API 和 WebSocket 流式协议
@@ -85,20 +85,20 @@ python start.py
 
 ### OpenAI 兼容接口
 
-| 端点 | 方法 | 功能 |
-|------|------|------|
+| 端点                         | 方法 | 功能                    |
+| ---------------------------- | ---- | ----------------------- |
 | `/v1/audio/transcriptions` | POST | 音频转写（OpenAI 兼容） |
-| `/v1/models` | GET | 模型列表 |
+| `/v1/models`               | GET  | 模型列表                |
 
 **请求参数:**
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `file` | file | 必填 | 音频文件 |
-| `model` | string | `paraformer-large` | 模型选择 |
-| `language` | string | 自动检测 | 语言代码 (zh/en/ja) |
-| `enable_speaker_diarization` | bool | `true` | 启用说话人分离 |
-| `response_format` | string | `json` | 输出格式 |
+| 参数                           | 类型   | 默认值             | 说明                |
+| ------------------------------ | ------ | ------------------ | ------------------- |
+| `file`                       | file   | 必填               | 音频文件            |
+| `model`                      | string | `qwen3-asr-1.7b` | 模型选择            |
+| `language`                   | string | 自动检测           | 语言代码 (zh/en/ja) |
+| `enable_speaker_diarization` | bool   | `true`           | 启用说话人分离      |
+| `response_format`            | string | `json`           | 输出格式            |
 
 **使用示例:**
 
@@ -131,23 +131,23 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 
 ### 阿里云兼容接口
 
-| 端点 | 方法 | 功能 |
-|------|------|------|
-| `/stream/v1/asr` | POST | 语音识别（支持长音频） |
-| `/stream/v1/asr/models` | GET | 模型列表 |
-| `/stream/v1/asr/health` | GET | 健康检查 |
-| `/ws/v1/asr` | WebSocket | 流式语音识别 |
-| `/ws/v1/asr/test` | GET | WebSocket 测试页面 |
+| 端点                      | 方法      | 功能                   |
+| ------------------------- | --------- | ---------------------- |
+| `/stream/v1/asr`        | POST      | 语音识别（支持长音频） |
+| `/stream/v1/asr/models` | GET       | 模型列表               |
+| `/stream/v1/asr/health` | GET       | 健康检查               |
+| `/ws/v1/asr`            | WebSocket | 流式语音识别           |
+| `/ws/v1/asr/test`       | GET       | WebSocket 测试页面     |
 
 **请求参数:**
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `model_id` | string | `paraformer-large` | 模型 ID |
-| `audio_address` | string | - | 音频 URL（可选） |
-| `sample_rate` | int | `16000` | 采样率 |
-| `enable_speaker_diarization` | bool | `true` | 启用说话人分离 |
-| `vocabulary_id` | string | - | 热词（格式：`词1 权重1 词2 权重2`） |
+| 参数                           | 类型   | 默认值             | 说明                                  |
+| ------------------------------ | ------ | ------------------ | ------------------------------------- |
+| `model_id`                   | string | `qwen3-asr-1.7b` | 模型 ID                               |
+| `audio_address`              | string | -                  | 音频 URL（可选）                      |
+| `sample_rate`                | int    | `16000`          | 采样率                                |
+| `enable_speaker_diarization` | bool   | `true`           | 启用说话人分离                        |
+| `vocabulary_id`              | string | -                  | 热词（格式：`词1 权重1 词2 权重2`） |
 
 **使用示例:**
 
@@ -201,6 +201,7 @@ curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=tru
 - **字幕支持** - SRT/VTT 格式输出包含说话人标记 `[说话人1] 文本内容`
 
 关闭说话人分离：
+
 ```bash
 # OpenAI API
 -F "enable_speaker_diarization=false"
@@ -211,10 +212,11 @@ curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=tru
 
 ## 支持的模型
 
-| 模型 ID | 名称 | 说明 | 特性 |
-|---------|------|------|------|
-| `qwen3-asr-1.7b` | Qwen3-ASR 1.7B | 高性能多语言ASR，52种语言+方言，vLLM后端 | 支持离线/实时 |
-| `paraformer-large` | Paraformer Large | 高精度中文语音识别 | 支持离线/实时 |
+| 模型 ID              | 名称             | 说明                                     | 特性      |
+| -------------------- | ---------------- | ---------------------------------------- | --------- |
+| `qwen3-asr-1.7b`   | Qwen3-ASR 1.7B   | 高性能多语言ASR，52种语言+方言，vLLM后端 | 离线      |
+| `qwen3-asr-0.6b`   | Qwen3-ASR 0.6B   | 轻量版多语言ASR，适合小显存环境          | 离线      |
+| `paraformer-large` | Paraformer Large | 高精度中文语音识别                       | 离线/实时 |
 
 **模型加载模式 (`ASR_MODEL_MODE`):**
 
@@ -231,43 +233,46 @@ export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
 
 ## 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `HOST` | `0.0.0.0` | 服务绑定地址 |
-| `PORT` | `8000` | 服务端口 |
-| `DEBUG` | `false` | 调试模式 |
-| `DEVICE` | `auto` | 设备选择: `auto`, `cpu`, `cuda:0` |
-| `ASR_MODEL_MODE` | `all` | 模型加载模式 |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型 |
-| `APPTOKEN` | - | API 访问令牌 |
-| `APPKEY` | - | 应用密钥 |
+| 变量                            | 默认值      | 说明                                   |
+| ------------------------------- | ----------- | -------------------------------------- |
+| `HOST`                        | `0.0.0.0` | 服务绑定地址                           |
+| `PORT`                        | `8000`    | 服务端口                               |
+| `DEBUG`                       | `false`   | 调试模式                               |
+| `DEVICE`                      | `auto`    | 设备选择:`auto`, `cpu`, `cuda:0` |
+| `ASR_MODEL_MODE`              | `all`     | 模型加载模式                           |
+| `AUTO_LOAD_CUSTOM_ASR_MODELS` | -           | 预加载的自定义模型                     |
+| `APPTOKEN`                    | -           | API 访问令牌                           |
+| `APPKEY`                      | -           | 应用密钥                               |
 
 ### 远场过滤配置
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ASR_ENABLE_NEARFIELD_FILTER` | `true` | 启用远场声音过滤 |
-| `ASR_NEARFIELD_RMS_THRESHOLD` | `0.01` | RMS 能量阈值 |
-| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | 启用过滤日志 |
+| 变量                                 | 默认值   | 说明             |
+| ------------------------------------ | -------- | ---------------- |
+| `ASR_ENABLE_NEARFIELD_FILTER`      | `true` | 启用远场声音过滤 |
+| `ASR_NEARFIELD_RMS_THRESHOLD`      | `0.01` | RMS 能量阈值     |
+| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | 启用过滤日志     |
 
 > 详细配置说明请查看 [远场过滤文档](./docs/nearfield_filter.md)
 
 ## 资源需求
 
 **最小配置（CPU）:**
+
 - CPU: 4 核
-- 内存: 8GB
-- 磁盘: 10GB
+- 内存: 16GB
+- 磁盘: 20GB
 
 **推荐配置（GPU）:**
-- CPU: 8 核
+
+- CPU: 4 核
 - 内存: 16GB
-- GPU: NVIDIA GPU (4GB+ 显存)
+- GPU: NVIDIA GPU (16GB+ 显存)
 - 磁盘: 20GB
 
 ## API 文档
 
 启动服务后访问：
+
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
