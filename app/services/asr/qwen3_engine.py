@@ -76,6 +76,16 @@ class Qwen3ASREngine(BaseASREngine):
 
         self.model_path = model_path
         self._device = self._detect_device(device)
+
+        # 根据模型大小自动设置显存使用率（如果未显式指定）
+        if gpu_memory_utilization == 0.8:  # 默认值
+            if "0.6B" in model_path:
+                gpu_memory_utilization = 0.4
+                logger.info("检测到 0.6B 模型，自动设置显存使用率为 0.4")
+            elif "1.7B" in model_path:
+                gpu_memory_utilization = 0.6
+                logger.info("检测到 1.7B 模型，自动设置显存使用率为 0.6")
+
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_inference_batch_size = max_inference_batch_size
         self.max_new_tokens = max_new_tokens
