@@ -142,17 +142,8 @@ class ModelManager:
                 if model_config.get("default", False):
                     self._default_model_id = model_id
 
-            # 根据 QWEN3_ASR_MODEL_SIZE 环境变量选择默认模型
-            if settings.QWEN3_ASR_MODEL_SIZE == "0.6b":
-                if "qwen3-asr-0.6b" in self._models_config:
-                    self._default_model_id = "qwen3-asr-0.6b"
-                    logger.info("使用 Qwen3-ASR-0.6B 作为默认模型（小显存模式）")
-                else:
-                    logger.warning("qwen3-asr-0.6b 配置不存在，使用默认模型")
-            elif settings.QWEN3_ASR_MODEL_SIZE == "1.7b":
-                if "qwen3-asr-1.7b" in self._models_config:
-                    self._default_model_id = "qwen3-asr-1.7b"
-                    logger.info("使用 Qwen3-ASR-1.7B 作为默认模型")
+            # 根据 QWEN_ASR_MODEL 环境变量选择默认模型
+            self._default_model_id = self._select_qwen_model()
 
             if not self._default_model_id and self._models_config:
                 # 如果没有指定默认模型，选择第一个
@@ -160,6 +151,62 @@ class ModelManager:
 
         except (json.JSONDecodeError, KeyError) as e:
             raise DefaultServerErrorException(f"模型配置文件格式错误: {str(e)}")
+
+    def _select_qwen_model(self) -> Optional[str]:
+        """根据配置选择 Qwen3-ASR 模型
+
+        Returns:
+            选择的模型ID，如果不是 Qwen 模型则返回现有默认
+        """
+        model_config = settings.QWEN_ASR_MODEL
+
+        # 直接指定模型ID
+        if model_config == "Qwen3-ASR-1.7B":
+            if "qwen3-asr-1.7b" in self._models_config:
+                logger.info("使用 Qwen3-ASR-1.7B（强制指定）")
+                return "qwen3-asr-1.7b"
+        elif model_config == "Qwen3-ASR-0.6B":
+            if "qwen3-asr-0.6b" in self._models_config:
+                logger.info("使用 Qwen3-ASR-0.6B（强制指定）")
+                return "qwen3-asr-0.6b"
+        elif model_config == "auto":
+            # 自动检测显存
+            selected = self._auto_select_by_vram()
+            if selected:
+                return selected
+
+        return self._default_model_id
+
+    def _auto_select_by_vram(self) -> Optional[str]:
+        """根据显存大小自动选择模型
+
+        < 24GB 用 0.6B, >= 24GB 用 1.7B
+        """
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                logger.info("无 CUDA，使用 Qwen3-ASR-0.6B")
+                return "qwen3-asr-0.6b" if "qwen3-asr-0.6b" in self._models_config else None
+
+            total_vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+            logger.info(f"检测到显存: {total_vram:.1f}GB")
+
+            if total_vram >= 24:
+                if "qwen3-asr-1.7b" in self._models_config:
+                    logger.info(f"显存充足 ({total_vram:.1f}GB >= 24GB)，使用 Qwen3-ASR-1.7B")
+                    return "qwen3-asr-1.7b"
+            else:
+                if "qwen3-asr-0.6b" in self._models_config:
+                    logger.info(f"显存有限 ({total_vram:.1f}GB < 24GB)，使用 Qwen3-ASR-0.6B")
+                    return "qwen3-asr-0.6b"
+
+        except Exception as e:
+            logger.warning(f"显存检测失败: {e}，使用默认模型")
+
+        return None
+
+
 
     def get_model_config(self, model_id: Optional[str] = None) -> ModelConfig:
         """获取模型配置"""

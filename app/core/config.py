@@ -85,7 +85,10 @@ class Settings:
     MAX_SEGMENT_SEC: float = 120.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
 
     # Qwen3-ASR 模型配置
-    QWEN3_ASR_MODEL_SIZE: str = "1.7b"  # 可选: 1.7b, 0.6b
+    # auto = 自动检测显存选择 (<24G用0.6b, >=24G用1.7b)
+    # Qwen3-ASR-1.7B = 强制使用 1.7B
+    # Qwen3-ASR-0.6B = 强制使用 0.6B
+    QWEN_ASR_MODEL: str = "auto"
 
     def __init__(self):
         """从环境变量读取配置"""
@@ -163,9 +166,8 @@ class Settings:
         )
 
         # Qwen3-ASR 模型配置
-        self.QWEN3_ASR_MODEL_SIZE = os.getenv(
-            "QWEN3_ASR_MODEL_SIZE", self.QWEN3_ASR_MODEL_SIZE
-        ).lower()  # 1.7b 或 0.6b
+        # auto = 自动检测显存选择, 或直接指定 Qwen3-ASR-1.7B / Qwen3-ASR-0.6B
+        self.QWEN_ASR_MODEL = os.getenv("QWEN_ASR_MODEL", self.QWEN_ASR_MODEL)
 
     def _parse_size(self, size_str: str) -> int:
         """解析带单位的大小字符串
