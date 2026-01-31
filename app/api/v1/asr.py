@@ -27,7 +27,6 @@ from ...core.security import (
     validate_token,
     validate_request_appkey
 )
-from ...api.v1.metrics import record_transcription_metrics, active_request_counter
 from ...models.common import SampleRate
 from ...models.asr import (
     ASRResponse,
@@ -250,152 +249,125 @@ async def asr_transcribe(
     # 获取音频处理服务
     audio_service = get_audio_service()
 
-    with active_request_counter():
-        try:
-            # 验证请求头部（鉴权）
-            result, content = validate_token(request, task_id)
-            if not result:
-                raise AuthenticationException(content, task_id)
+    try:
+        # 验证请求头部（鉴权）
+        result, content = validate_token(request, task_id)
+        if not result:
+            raise AuthenticationException(content, task_id)
 
-            # 验证appkey参数
-            result, content = validate_request_appkey(params.appkey or "", task_id)
-            if not result:
-                raise AuthenticationException(content, task_id)
+        # 验证appkey参数
+        result, content = validate_request_appkey(params.appkey or "", task_id)
+        if not result:
+            raise AuthenticationException(content, task_id)
 
-            # 使用音频服务处理音频
-            target_sample_rate = params.sample_rate if params.sample_rate else 16000
-            normalized_audio_path, audio_duration, audio_path = await audio_service.process_from_request(
-                request=request,
-                audio_address=params.audio_address,
-                task_id=task_id,
-                sample_rate=target_sample_rate,
-            )
+        # 使用音频服务处理音频
+        target_sample_rate = params.sample_rate if params.sample_rate else 16000
+        normalized_audio_path, audio_duration, audio_path = await audio_service.process_from_request(
+            request=request,
+            audio_address=params.audio_address,
+            task_id=task_id,
+            sample_rate=target_sample_rate,
+        )
 
-            # 执行语音识别
-            logger.info(f"[{task_id}] 正在加载ASR模型: {params.model_id or '默认'}...")
-            import sys
-            sys.stdout.flush()
+        # 执行语音识别
+        logger.info(f"[{task_id}] 正在加载ASR模型: {params.model_id or '默认'}...")
+        import sys
+        sys.stdout.flush()
 
-            model_manager = get_model_manager()
-            asr_engine = model_manager.get_asr_engine(params.model_id)  # 使用指定模型或默认模型
-            logger.info(f"[{task_id}] ASR模型加载完成: {params.model_id or '默认'}")
-            sys.stdout.flush()
+        model_manager = get_model_manager()
+        asr_engine = model_manager.get_asr_engine(params.model_id)  # 使用指定模型或默认模型
+        logger.info(f"[{task_id}] ASR模型加载完成: {params.model_id or '默认'}")
+        sys.stdout.flush()
 
-            # 准备热词（vocabulary_id 参数直接传递热词字符串）
-            hotwords = params.vocabulary_id or ""
+        # 准备热词（vocabulary_id 参数直接传递热词字符串）
+        hotwords = params.vocabulary_id or ""
 
-            # 使用线程池执行模型推理，避免阻塞事件循环
-            # 使用长音频识别方法，自动处理超过60秒的音频
-            # 默认开启：标点预测、ITN（数字转换）
-            logger.info(f"[{task_id}] 开始调用 transcribe_long_audio (enable_speaker_diarization={params.enable_speaker_diarization})...")
-            sys.stdout.flush()
+        # 使用线程池执行模型推理，避免阻塞事件循环
+        # 使用长音频识别方法，自动处理超过60秒的音频
+        # 默认开启：标点预测、ITN（数字转换）
+        logger.info(f"[{task_id}] 开始调用 transcribe_long_audio (enable_speaker_diarization={params.enable_speaker_diarization})...")
+        sys.stdout.flush()
 
-            asr_result = await run_sync(
-                asr_engine.transcribe_long_audio,
-                audio_path=normalized_audio_path,
-                hotwords=hotwords,
-                enable_punctuation=True,  # 默认开启标点预测
-                enable_itn=True,  # 默认开启数字转换
-                sample_rate=params.sample_rate,
-                enable_speaker_diarization=params.enable_speaker_diarization if params.enable_speaker_diarization is not None else True,
-                word_timestamps=params.word_timestamps if params.word_timestamps is not None else False,
-            )
+        asr_result = await run_sync(
+            asr_engine.transcribe_long_audio,
+            audio_path=normalized_audio_path,
+            hotwords=hotwords,
+            enable_punctuation=True,  # 默认开启标点预测
+            enable_itn=True,  # 默认开启数字转换
+            sample_rate=params.sample_rate,
+            enable_speaker_diarization=params.enable_speaker_diarization if params.enable_speaker_diarization is not None else True,
+            word_timestamps=params.word_timestamps if params.word_timestamps is not None else False,
+        )
 
-            logger.info(f"[{task_id}] 识别完成，共 {len(asr_result.segments)} 个分段，总字符: {len(asr_result.text)}")
+        logger.info(f"[{task_id}] 识别完成，共 {len(asr_result.segments)} 个分段，总字符: {len(asr_result.text)}")
 
-            # 构建分段结果（始终返回 segments，短音频也是 1 个 segment）
-            segments_data = []
-            for seg in asr_result.segments:
-                seg_dict = {
-                    "text": seg.text,
-                    "start_time": round(seg.start_time, 2),
-                    "end_time": round(seg.end_time, 2),
-                }
-                if seg.speaker_id:
-                    seg_dict["speaker_id"] = seg.speaker_id
-                # 添加字词级时间戳（如果存在）
-                if seg.word_tokens:
-                    seg_dict["word_tokens"] = [
-                        {
-                            "text": wt.text,
-                            "start_time": round(wt.start_time, 3),
-                            "end_time": round(wt.end_time, 3),
-                        }
-                        for wt in seg.word_tokens
-                    ]
-                segments_data.append(seg_dict)
-
-            # 计算请求处理时间
-            request_duration = time.time() - request_start_time
-
-            # 记录Prometheus指标
-            record_transcription_metrics(
-                model_id=params.model_id or "default",
-                status="success",
-                duration_sec=request_duration,
-                audio_duration_sec=asr_result.duration,
-            )
-
-            # 返回成功响应（统一数据结构）
-            response_data = {
-                "task_id": task_id,
-                "result": asr_result.text,
-                "status": 200,
-                "message": "SUCCESS",
-                "segments": segments_data,
-                "duration": round(asr_result.duration, 2),
-                "processing_time": round(request_duration, 3),
+        # 构建分段结果（始终返回 segments，短音频也是 1 个 segment）
+        segments_data = []
+        for seg in asr_result.segments:
+            seg_dict = {
+                "text": seg.text,
+                "start_time": round(seg.start_time, 2),
+                "end_time": round(seg.end_time, 2),
             }
+            if seg.speaker_id:
+                seg_dict["speaker_id"] = seg.speaker_id
+            # 添加字词级时间戳（如果存在）
+            if seg.word_tokens:
+                seg_dict["word_tokens"] = [
+                    {
+                        "text": wt.text,
+                        "start_time": round(wt.start_time, 3),
+                        "end_time": round(wt.end_time, 3),
+                    }
+                    for wt in seg.word_tokens
+                ]
+            segments_data.append(seg_dict)
 
-            return JSONResponse(content=response_data, headers={"task_id": task_id})
+        # 计算请求处理时间
+        request_duration = time.time() - request_start_time
 
-        except (
-            AuthenticationException,
-            InvalidParameterException,
-            InvalidMessageException,
-            UnsupportedSampleRateException,
-            DefaultServerErrorException,
-        ) as e:
-            e.task_id = task_id
-            logger.error(f"[{task_id}] ASR异常: {e.message}")
+        # 返回成功响应（统一数据结构）
+        response_data = {
+            "task_id": task_id,
+            "result": asr_result.text,
+            "status": 200,
+            "message": "SUCCESS",
+            "segments": segments_data,
+            "duration": round(asr_result.duration, 2),
+            "processing_time": round(request_duration, 3),
+        }
 
-            # 记录错误指标
-            request_duration = time.time() - request_start_time
-            record_transcription_metrics(
-                model_id=params.model_id or "default",
-                status="error",
-                duration_sec=request_duration,
-                audio_duration_sec=0,
-            )
+        return JSONResponse(content=response_data, headers={"task_id": task_id})
 
-            # 使用标准错误格式
-            response_data = e.to_dict()
-            return JSONResponse(content=response_data, headers={"task_id": task_id})
+    except (
+        AuthenticationException,
+        InvalidParameterException,
+        InvalidMessageException,
+        UnsupportedSampleRateException,
+        DefaultServerErrorException,
+    ) as e:
+        e.task_id = task_id
+        logger.error(f"[{task_id}] ASR异常: {e.message}")
 
-        except Exception as e:
-            logger.error(f"[{task_id}] 未知异常: {str(e)}")
+        # 使用标准错误格式
+        response_data = e.to_dict()
+        return JSONResponse(content=response_data, headers={"task_id": task_id})
 
-            # 记录错误指标
-            request_duration = time.time() - request_start_time
-            record_transcription_metrics(
-                model_id=params.model_id or "default",
-                status="error",
-                duration_sec=request_duration,
-                audio_duration_sec=0,
-            )
+    except Exception as e:
+        logger.error(f"[{task_id}] 未知异常: {str(e)}")
 
-            # 使用标准错误格式
-            from ...core.exceptions import create_error_response
-            response_data = create_error_response(
-                error_code="DEFAULT_SERVER_ERROR",
-                message=f"内部服务错误: {str(e)}",
-                task_id=task_id,
-            )
-            return JSONResponse(content=response_data, headers={"task_id": task_id})
+        # 使用标准错误格式
+        from ...core.exceptions import create_error_response
+        response_data = create_error_response(
+            error_code="DEFAULT_SERVER_ERROR",
+            message=f"内部服务错误: {str(e)}",
+            task_id=task_id,
+        )
+        return JSONResponse(content=response_data, headers={"task_id": task_id})
 
-        finally:
-            # 清理临时文件
-            audio_service.cleanup(audio_path, normalized_audio_path)
+    finally:
+        # 清理临时文件
+        audio_service.cleanup(audio_path, normalized_audio_path)
 
 
 @router.get(

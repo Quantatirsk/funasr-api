@@ -73,22 +73,22 @@ async def lifespan(app: FastAPI):
     if worker_id == 0:
         cleanup_temp_directory()
 
-    # 多 Worker 模式下，每个 Worker 需要自己加载模型
-    if workers > 1:
-        try:
-            from .utils.model_loader import preload_models
+    # 所有 Worker 都需要预加载模型
+    try:
+        from .utils.model_loader import preload_models
 
-            logger.info(f"Worker [{worker_id}] 正在加载模型...")
-            preload_result = preload_models()
+        logger.info(f"Worker [{worker_id}] 正在加载模型...")
+        preload_result = preload_models()
 
-            # 记录加载结果
-            loaded_count = sum(1 for r in preload_result.values() if r.get("loaded"))
-            total_count = len(preload_result)
-            logger.info(f"Worker [{worker_id}] 模型加载完成: {loaded_count}/{total_count}")
+        # 记录加载结果
+        asr_results = preload_result.get("asr_models", {})
+        loaded_count = sum(1 for r in asr_results.values() if r.get("loaded"))
+        total_count = len(asr_results)
+        logger.info(f"Worker [{worker_id}] 模型加载完成: {loaded_count}/{total_count}")
 
-        except Exception as e:
-            logger.error(f"Worker [{worker_id}] 模型预加载失败: {e}")
-            logger.warning(f"Worker [{worker_id}] 模型将在首次使用时加载")
+    except Exception as e:
+        logger.error(f"Worker [{worker_id}] 模型预加载失败: {e}")
+        logger.warning(f"Worker [{worker_id}] 模型将在首次使用时加载")
 
     logger.info(f"Worker [{worker_id}] 已就绪")
 

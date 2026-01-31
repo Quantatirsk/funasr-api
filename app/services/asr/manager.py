@@ -369,6 +369,49 @@ class ModelManager:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    def preload_all_models(self) -> Dict[str, Any]:
+        """
+        预加载所有配置的模型
+
+        Returns:
+            预加载结果统计
+        """
+        logger.info("开始预加载所有模型...")
+        results = {
+            "success": [],
+            "failed": [],
+            "skipped": [],
+        }
+
+        for model_id, config in self._models_config.items():
+            # 根据当前模式跳过不兼容的模型
+            mode = settings.ASR_MODEL_MODE.lower()
+            if mode == "offline" and not config.has_offline_model:
+                results["skipped"].append(f"{model_id} (无离线版本)")
+                continue
+            if mode == "realtime" and not config.has_realtime_model:
+                results["skipped"].append(f"{model_id} (无实时版本)")
+                continue
+
+            try:
+                logger.info(f"预加载模型: {model_id}")
+                engine = self.get_asr_engine(model_id)
+                if engine.is_model_loaded():
+                    results["success"].append(model_id)
+                    logger.info(f"模型 {model_id} 预加载成功")
+                else:
+                    results["failed"].append(f"{model_id} (未正确加载)")
+                    logger.error(f"模型 {model_id} 预加载失败: 未正确加载")
+            except Exception as e:
+                results["failed"].append(f"{model_id} ({str(e)})")
+                logger.error(f"模型 {model_id} 预加载失败: {e}")
+
+        logger.info(
+            f"模型预加载完成: 成功 {len(results['success'])}, "
+            f"失败 {len(results['failed'])}, 跳过 {len(results['skipped'])}"
+        )
+        return results
+
     def validate_model_mode_compatibility(self, model_id: str) -> Dict[str, Any]:
         """验证模型与当前ASR_MODEL_MODE的兼容性"""
         config = self.get_model_config(model_id)
