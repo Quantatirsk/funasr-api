@@ -29,6 +29,8 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - DEVICE=cuda:0
+      # Qwen3-ASR 模型大小: 1.7b (默认，推荐) 或 0.6b (小显存模式)
+      # - QWEN3_ASR_MODEL_SIZE=1.7b
       - NVIDIA_VISIBLE_DEVICES=0
       # 多进程会复制模型、显存成倍增加；离线长音频建议保持 1
       - WORKERS=1

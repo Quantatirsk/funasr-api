@@ -142,6 +142,18 @@ class ModelManager:
                 if model_config.get("default", False):
                     self._default_model_id = model_id
 
+            # 根据 QWEN3_ASR_MODEL_SIZE 环境变量选择默认模型
+            if settings.QWEN3_ASR_MODEL_SIZE == "0.6b":
+                if "qwen3-asr-0.6b" in self._models_config:
+                    self._default_model_id = "qwen3-asr-0.6b"
+                    logger.info("使用 Qwen3-ASR-0.6B 作为默认模型（小显存模式）")
+                else:
+                    logger.warning("qwen3-asr-0.6b 配置不存在，使用默认模型")
+            elif settings.QWEN3_ASR_MODEL_SIZE == "1.7b":
+                if "qwen3-asr-1.7b" in self._models_config:
+                    self._default_model_id = "qwen3-asr-1.7b"
+                    logger.info("使用 Qwen3-ASR-1.7B 作为默认模型")
+
             if not self._default_model_id and self._models_config:
                 # 如果没有指定默认模型，选择第一个
                 self._default_model_id = list(self._models_config.keys())[0]

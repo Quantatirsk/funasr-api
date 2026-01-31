@@ -33,10 +33,20 @@ MODELSCOPE_MODELS = [
     ("iic/speech_ngram_lm_zh-cn-ai-wesp-fst", "语言模型(N-gram LM)"),
 ]
 
-# === HuggingFace 模型列表 ===
-HUGGINGFACE_MODELS = [
-    ("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B (vLLM 后端)"),
-]
+# === Qwen3-ASR 模型选择 ===
+# 根据环境变量选择模型版本，默认 1.7b
+QWEN3_ASR_MODEL_SIZE = os.getenv("QWEN3_ASR_MODEL_SIZE", "1.7b").lower()
+
+if QWEN3_ASR_MODEL_SIZE == "0.6b":
+    HUGGINGFACE_MODELS = [
+        ("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B (vLLM 后端，轻量版)"),
+        ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
+    ]
+else:
+    HUGGINGFACE_MODELS = [
+        ("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B (vLLM 后端)"),
+        ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
+    ]
 
 
 def check_model_exists(model_id: str, cache_dir: str) -> tuple[bool, str]:
