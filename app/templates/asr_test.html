@@ -426,12 +426,15 @@
             qwen3: {
                 name: 'qwen3',
                 title: '🎤 Qwen3-ASR流式语音识别测试',
-                desc: 'WebSocket流式语音识别 - vLLM后端累积重推理机制 | 支持52+种语言自动检测',
-                info: '<strong>协议说明：</strong>本页面支持通过麦克风实时录音并进行语音识别。点击"开始识别"后，说话内容将实时转换为文字。Qwen3-ASR使用累积重推理机制，每次将已接收的全部音频重新送入vLLM模型。',
+                desc: 'WebSocket流式语音识别 - vLLM后端累积重推理机制 | 支持VAD自动截断',
+                info: '<strong>协议说明：</strong>本页面支持通过麦克风实时录音并进行语音识别。点击"开始识别"后，说话内容将实时转换为文字。<br><strong>VAD功能：</strong>连续2秒静音或累积60秒音频后自动截断，生成新段落继续识别。',
                 defaultUrl: 'ws://localhost:8000/ws/v1/asr/qwen',
-                // Qwen3特有状态
-                currentText: "",
+                // Qwen3特有状态（适配VAD多段落）
+                currentText: "",           // 当前完整累积文本
+                currentSegmentText: "",    // 当前段落原始文本
                 detectedLanguage: "",
+                segmentIndex: 0,           // 当前段落索引
+                confirmedSegments: [],     // 已确认的段落列表
                 // 构建开始消息
                 buildStartMsg: function() {
                     const chunkSizeSec = parseFloat(document.getElementById('qwen3-chunkSizeSec').value);
@@ -455,7 +458,7 @@
                 buildStopMsg: function() {
                     return { type: 'stop' };
                 },
-                // 处理消息
+                // 处理消息（适配VAD截断消息）
                 handleMessage: async function(response) {
                     const type = response.type || '';
 
@@ -471,16 +474,51 @@
                         case 'result':
                             if (response.results && response.results.length > 0) {
                                 const result = response.results[response.results.length - 1];
-                                log(`中间结果 [chunk ${result.chunk_id}]: "${result.text}"`, 'info');
-                                this.updateResult(result.text, result.language);
+                                // 使用服务端返回的累积文本
+                                const displayText = result.text || result.current_segment_text || "";
+                                const currentSegText = result.current_segment_text || result.text || "";
+                                log(`中间结果 [chunk ${result.chunk_id}]: "${currentSegText}"`, 'info');
+                                this.updateResult(displayText, currentSegText, result.language, result.segment_index);
                             }
+                            break;
+
+                        case 'segment_end':
+                            // VAD截断：段落结束
+                            const segResult = response.result || {};
+                            const segText = segResult.text || segResult.segment_text || "";
+                            log(`段落 ${response.segment_index} 结束 (${response.reason}): "${segText.substring(0, 50)}${segText.length > 50 ? '...' : ''}"`, 'success');
+                            // 保存已确认段落
+                            if (segText) {
+                                this.confirmedSegments.push({
+                                    index: response.segment_index,
+                                    text: segText,
+                                    reason: response.reason
+                                });
+                            }
+                            this.segmentIndex = response.segment_index + 1;
+                            updateStats();
+                            break;
+
+                        case 'segment_start':
+                            // VAD截断：新段落开始
+                            log(`段落 ${response.segment_index} 开始`, 'info');
+                            this.segmentIndex = response.segment_index;
+                            this.currentSegmentText = "";
+                            updateStats();
                             break;
 
                         case 'final':
                             const finalResult = response.result;
-                            this.updateResult(finalResult.text, finalResult.language);
+                            const fullText = finalResult.full_text || finalResult.text || "";
+                            this.updateResult(fullText, finalResult.text, finalResult.language);
                             updateStatus('识别完成！', 'success');
-                            log(`识别完成！总块数: ${finalResult.total_chunks}, 语言: ${finalResult.language}`, 'success');
+                            log(`识别完成！总段落: ${finalResult.total_segments}, 语言: ${finalResult.language}`, 'success');
+                            if (finalResult.segments && finalResult.segments.length > 0) {
+                                log('段落详情:', 'info');
+                                finalResult.segments.forEach((seg, idx) => {
+                                    log(`  [${idx}] ${seg.text.substring(0, 40)}${seg.text.length > 40 ? '...' : ''}`, 'info');
+                                });
+                            }
                             updateStats();
 
                             if (websocket) {
@@ -501,13 +539,40 @@
                             break;
                     }
                 },
-                // 更新结果显示（简单文本替换）
-                updateResult: function(text, language) {
+                // 更新结果显示（支持多段落显示）
+                updateResult: function(fullText, segmentText, language, segmentIdx) {
                     const resultEl = document.getElementById('resultText');
-                    if (text) {
-                        resultEl.textContent = text;
-                        this.currentText = text;
+
+                    // 更新当前状态
+                    if (fullText) {
+                        this.currentText = fullText;
                     }
+                    if (segmentText !== undefined) {
+                        this.currentSegmentText = segmentText;
+                    }
+                    if (segmentIdx !== undefined) {
+                        this.segmentIndex = segmentIdx;
+                    }
+
+                    // 构建显示HTML：已确认段落 + 当前段落
+                    let displayHtml = "";
+
+                    // 添加已确认段落（灰色）
+                    if (this.confirmedSegments.length > 0) {
+                        const confirmedText = this.confirmedSegments.map(s => s.text).join("");
+                        displayHtml += `<span style="color: #666;">${confirmedText}</span>`;
+                    }
+
+                    // 添加当前段落（黑色，如果是最终结果为绿色）
+                    const currentTextToShow = this.currentSegmentText || this.currentText;
+                    if (currentTextToShow) {
+                        if (displayHtml) displayHtml += " ";
+                        displayHtml += `<span style="color: #000; font-weight: 500;">${currentTextToShow}</span>`;
+                    }
+
+                    resultEl.innerHTML = displayHtml || "等待识别...";
+                    resultEl.scrollTop = resultEl.scrollHeight;
+
                     if (language) {
                         this.detectedLanguage = language;
                         updateStats();
@@ -516,7 +581,10 @@
                 // 重置状态
                 reset: function() {
                     this.currentText = "";
+                    this.currentSegmentText = "";
                     this.detectedLanguage = "";
+                    this.segmentIndex = 0;
+                    this.confirmedSegments = [];
                 },
                 // 获取采样率
                 getSampleRate: function() {
@@ -529,7 +597,8 @@
                 },
                 // 显示统计
                 showStats: function() {
-                    document.getElementById('sentenceCountStat').style.display = 'none';
+                    document.getElementById('sentenceCountStat').style.display = 'block';
+                    document.getElementById('sentenceCount').textContent = this.segmentIndex;
                     document.getElementById('detectedLanguageStat').style.display = 'block';
                 }
             }
@@ -585,6 +654,7 @@
             if (currentProtocol === 'aliyun') {
                 document.getElementById('sentenceCount').textContent = protocols.aliyun.sentenceCount;
             } else {
+                document.getElementById('sentenceCount').textContent = protocols.qwen3.segmentIndex;
                 document.getElementById('detectedLanguage').textContent = protocols.qwen3.detectedLanguage || '-';
             }
 
@@ -608,7 +678,10 @@
                 protocols.aliyun.sentences = {};
             } else {
                 protocols.qwen3.currentText = "";
+                protocols.qwen3.currentSegmentText = "";
                 protocols.qwen3.detectedLanguage = "";
+                protocols.qwen3.segmentIndex = 0;
+                protocols.qwen3.confirmedSegments = [];
             }
             updateStats();
         }
