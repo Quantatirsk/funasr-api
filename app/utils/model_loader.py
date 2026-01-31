@@ -131,7 +131,7 @@ def preload_models() -> dict:
         # 根据配置过滤要加载的模型
         # 只加载默认模型和显式指定的模型
         default_model = model_manager._default_model_id
-        models_to_load = [default_model] if default_model in model_ids else []
+        models_to_load: list[str] = [default_model] if default_model and default_model in model_ids else []
 
         # 如果默认模型是 qwen3-asr-0.6b，跳过 qwen3-asr-1.7b
         # 如果默认模型是 qwen3-asr-1.7b，加载它（以及可能的 0.6b 用于其他用途）
