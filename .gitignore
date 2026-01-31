@@ -167,3 +167,5 @@ modelscope/
 .DS_Store
 
 *.gz
+
+*CLAUDE.md
