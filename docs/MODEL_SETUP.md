@@ -31,14 +31,15 @@ python scripts/download_models.py
 
 ```bash
 # 在项目根目录创建 models 目录，链接到 ModelScope 缓存
-ln -s ~/.cache/modelscope ./models
+ln -s ~/.cache/modelscope/hub ./models/hub
 ```
 
 或者直接复制模型文件：
 
 ```bash
 # 复制模型到项目目录（适合内网部署）
-cp -r ~/.cache/modelscope ./models
+mkdir -p ./models/hub
+cp -r ~/.cache/modelscope/hub/models ./models/hub/
 ```
 
 ### 3. 启动服务
@@ -75,19 +76,22 @@ funasr-api/
 在有网络的机器上：
 
 ```bash
-# 1. 下载模型
-python scripts/download_models.py
+# 1. 下载模型（使用模块方式）
+python -m app.utils.download_models
 
-# 2. 打包模型目录
-tar -czf models.tar.gz -C ~/.cache modelscope
+# 2. 打包模型目录（只打包 hub 子目录）
+tar -czf models.tar.gz -C ~/.cache/modelscope hub
 ```
 
 在内网机器上：
 
 ```bash
-# 1. 解压模型
+# 1. 解压模型（确保路径为 ./models/hub/models/）
 mkdir -p models
 tar -xzf models.tar.gz -C ./models
+
+# 验证目录结构
+ls ./models/hub/models/iic/  # 应该能看到 speech_paraformer-large 等目录
 
 # 2. 拉取镜像（通过 Docker 镜像仓库或离线导入）
 docker pull quantatrisk/funasr-api:gpu-latest
@@ -213,7 +217,7 @@ docker-compose logs -f funasr-api
 
 ### 环境变量
 
-容器内的 `MODELSCOPE_CACHE` 环境变量指向 `/root/.cache/modelscope`，与挂载路径一致。
+容器内模型路径为 `/root/.cache/modelscope/hub/models/`，与挂载的 `./models/hub/models/` 对应。
 
 ### 模型加载流程
 
