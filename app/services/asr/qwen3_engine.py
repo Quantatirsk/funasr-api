@@ -83,11 +83,11 @@ class Qwen3ASREngine(BaseASREngine):
                 gpu_memory_utilization = 0.3
                 logger.info("检测到 0.6B 模型，自动设置显存使用率为 0.3")
             elif "1.7B" in model_path:
-                gpu_memory_utilization = 0.6
-                logger.info("检测到 1.7B 模型，自动设置显存使用率为 0.6")
+                gpu_memory_utilization = 0.4
+                logger.info("检测到 1.7B 模型，自动设置显存使用率为 0.4")
             else:
-                gpu_memory_utilization = 0.6  # 默认
-                logger.info(f"未识别模型大小，默认显存使用率 0.6 (路径: {model_path})")
+                gpu_memory_utilization = 0.4  # 默认
+                logger.info(f"未识别模型大小，默认显存使用率 0.4 (路径: {model_path})")
 
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_inference_batch_size = max_inference_batch_size
