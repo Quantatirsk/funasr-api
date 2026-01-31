@@ -180,7 +180,7 @@ class ModelManager:
     def _auto_select_by_vram(self) -> Optional[str]:
         """根据显存大小自动选择模型
 
-        < 24GB 用 0.6B, >= 24GB 用 1.7B
+        < 48GB 用 0.6B, >= 48GB 用 1.7B
         """
         try:
             import torch
@@ -198,13 +198,13 @@ class ModelManager:
 
             total_vram = min_vram  # 使用最小显存作为限制
 
-            if total_vram >= 24:
+            if total_vram >= 48:
                 if "qwen3-asr-1.7b" in self._models_config:
-                    logger.info(f"显存充足 ({total_vram:.1f}GB >= 24GB)，使用 Qwen3-ASR-1.7B")
+                    logger.info(f"显存充足 ({total_vram:.1f}GB >= 48GB)，使用 Qwen3-ASR-1.7B")
                     return "qwen3-asr-1.7b"
             else:
                 if "qwen3-asr-0.6b" in self._models_config:
-                    logger.info(f"显存有限 ({total_vram:.1f}GB < 24GB)，使用 Qwen3-ASR-0.6B")
+                    logger.info(f"显存有限 ({total_vram:.1f}GB < 48GB)，使用 Qwen3-ASR-0.6B")
                     return "qwen3-asr-0.6b"
 
         except Exception as e:

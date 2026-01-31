@@ -85,7 +85,7 @@ class Settings:
     MAX_SEGMENT_SEC: float = 120.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
 
     # Qwen3-ASR 模型配置
-    # auto = 自动检测显存选择 (<24G用0.6b, >=24G用1.7b)
+    # auto = 自动检测显存选择 (<48G用0.6b, >=48G用1.7b)
     # Qwen3-ASR-1.7B = 强制使用 1.7B
     # Qwen3-ASR-0.6B = 强制使用 0.6B
     QWEN_ASR_MODEL: str = "auto"
