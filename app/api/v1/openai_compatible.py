@@ -166,10 +166,9 @@ def map_model_id(model: str) -> Optional[str]:
 
 | 模型 ID | 说明 |
 |---------|------|
-| `paraformer-large` | 高精度中文 ASR，内置 VAD+标点（默认） |
+| `qwen3-asr-1.7b` | Qwen3-ASR 1.7B，52 种语言，vLLM 高性能（默认） |
+| `paraformer-large` | 高精度中文 ASR，内置 VAD+标点 |
 | `fun-asr-nano` | 轻量级多语言 ASR，支持 31 种语言、7 大中文方言 |
-| `qwen3-asr-1.7b` | Qwen3-ASR 1.7B，52 种语言，vLLM 高性能 |
-| `qwen3-asr-0.6b` | Qwen3-ASR 0.6B 轻量版，适合边缘部署 |
 
 **兼容性说明：**
 - `whisper-1` 等 OpenAI 模型 ID 会自动映射到默认模型
@@ -227,7 +226,8 @@ async def list_models(request: Request):
 | `vtt` | text/vtt | WebVTT 字幕格式 |
 
 **模型映射：**
-- `whisper-1` → 使用默认模型 (paraformer-large)
+- `whisper-1` → 使用默认模型 (qwen3-asr-1.7b)
+- `qwen3-asr-1.7b` → Qwen3-ASR 1.7B，52种语言，vLLM高性能
 - `paraformer-large` → 高精度中文 ASR
 - `fun-asr-nano` → 多语言+方言 ASR
 
@@ -273,9 +273,9 @@ async def create_transcription(
     ),
     # 2. 核心参数
     model: str = Form(
-        "paraformer-large",
+        "qwen3-asr-1.7b",
         description="ASR 模型选择",
-        json_schema_extra={"enum": ["paraformer-large", "fun-asr-nano", "qwen3-asr-1.7b", "qwen3-asr-0.6b"]},
+        json_schema_extra={"enum": ["qwen3-asr-1.7b", "paraformer-large", "fun-asr-nano"]},
     ),
     # 3. 音频属性
     language: Optional[str] = Form(

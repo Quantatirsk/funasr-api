@@ -2,7 +2,7 @@
 """
 Qwen3-ASR 引擎 - 内嵌 vLLM 后端
 
-支持 Qwen3-ASR-0.6B 和 Qwen3-ASR-1.7B 模型
+支持 Qwen3-ASR-1.7B 模型
 通过 Qwen3ASRModel.LLM() 直接初始化 vLLM
 """
 
