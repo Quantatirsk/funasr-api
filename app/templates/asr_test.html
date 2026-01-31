@@ -309,6 +309,7 @@
                             if (status === 20000000) {
                                 updateStatus('识别已开始，正在监听...', 'success');
                                 log('✅ 识别已开始', 'success');
+                                await startMicrophone();
                             } else {
                                 throw new Error('TranscriptionStarted失败: ' + header.status_message);
                             }

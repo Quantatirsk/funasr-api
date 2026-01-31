@@ -92,7 +92,7 @@ class AudioSplitter:
             语音段列表，每个元素为 (start_ms, end_ms)
         """
         try:
-            from ..services.asr.engine import get_global_vad_model
+            from ..services.asr.engines import get_global_vad_model
 
             logger.info("开始 VAD 语音段检测...")
             vad_model = get_global_vad_model(self.device)

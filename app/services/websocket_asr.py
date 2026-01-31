@@ -39,7 +39,7 @@ from enum import IntEnum
 from fastapi import WebSocketDisconnect
 
 if TYPE_CHECKING:
-    from .asr.engine import FunASREngine, BaseASREngine
+    from .asr.engines import FunASREngine, BaseASREngine
 
 from ..core.config import settings
 from ..core.executor import run_sync
@@ -117,6 +117,7 @@ class AliyunWebSocketASRService:
         sentence_texts_raw = []
         empty_result_count = 0
         audio_buffer = np.array([], dtype=np.float32)  # 音频缓冲区，用于累积到完整chunk
+        max_buffer_size = settings.WS_MAX_BUFFER_SIZE  # 最大缓冲区大小（样本数）
 
         logger.info(f"[{task_id}] WebSocket ASR连接开始")
 
@@ -273,6 +274,25 @@ class AliyunWebSocketASRService:
                             incoming_audio = self._convert_audio_bytes_to_array(
                                 audio_bytes, audio_format, sample_rate, task_id
                             )
+
+                            # 检查缓冲区大小限制
+                            if len(audio_buffer) + len(incoming_audio) > max_buffer_size:
+                                # 缓冲区超过限制，丢弃旧数据（保留最近的音频）
+                                excess_samples = len(audio_buffer) + len(incoming_audio) - max_buffer_size
+                                if excess_samples >= len(audio_buffer):
+                                    # 如果新数据已经超过限制，只保留最新的max_buffer_size样本
+                                    logger.warning(
+                                        f"[{task_id}] WebSocket音频缓冲区超过限制 ({max_buffer_size} samples)，"
+                                        f"丢弃所有旧数据"
+                                    )
+                                    audio_buffer = np.array([], dtype=np.float32)
+                                else:
+                                    # 丢弃旧数据，保留最近的音频
+                                    logger.warning(
+                                        f"[{task_id}] WebSocket音频缓冲区超过限制，丢弃 {excess_samples} samples 旧数据"
+                                    )
+                                    audio_buffer = audio_buffer[excess_samples:]
+
                             audio_buffer = np.concatenate([audio_buffer, incoming_audio])
 
                             logger.debug(
@@ -713,7 +733,7 @@ class AliyunWebSocketASRService:
                     and params.get("enable_punctuation_prediction", True)
                 ):
                     try:
-                        from .asr.engine import get_global_punc_realtime_model
+                        from .asr.engines import get_global_punc_realtime_model
 
                         # 使用全局实时PUNC模型
                         punc_realtime_model = get_global_punc_realtime_model(
@@ -763,7 +783,7 @@ class AliyunWebSocketASRService:
             return text
 
         try:
-            from .asr.engine import get_global_punc_model
+            from .asr.engines import get_global_punc_model
 
             asr_engine = self._ensure_asr_engine()
 

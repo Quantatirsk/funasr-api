@@ -16,14 +16,15 @@ from pydantic import BaseModel, Field
 from ...core.config import settings
 from ...core.executor import run_sync
 from ...core.security import validate_token
-from ...utils.audio import (
-    save_audio_to_temp_file,
-    cleanup_temp_file,
-    get_audio_file_suffix,
-    normalize_audio_for_asr,
-    get_audio_duration,
+from ...core.exceptions import (
+    AuthenticationException,
+    InvalidParameterException,
+    create_error_response,
 )
+from ...api.v1.metrics import record_transcription_metrics, active_request_counter
 from ...services.asr.manager import get_model_manager
+from ...services.asr.validators import AudioParamsValidator
+from ...services.audio import get_audio_service
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,12 @@ def map_model_id(model: str) -> Optional[str]:
     if model.lower().startswith("whisper"):
         return None  # 使用默认模型
 
+    # 验证模型ID是否受支持
+    if model not in AudioParamsValidator.SUPPORTED_MODELS:
+        raise InvalidParameterException(
+            f"不支持的模型ID: {model}。支持的模型: {', '.join(AudioParamsValidator.SUPPORTED_MODELS)}"
+        )
+
     # 其他情况直接使用原模型 ID
     return model
 
@@ -180,7 +187,11 @@ async def list_models(request: Request):
     # 可选鉴权
     result, _ = validate_token(request)
     if not result and settings.APPTOKEN:
-        raise HTTPException(status_code=401, detail="Invalid authentication")
+        response_data = create_error_response(
+            error_code="AUTHENTICATION_FAILED",
+            message="Invalid authentication",
+        )
+        return JSONResponse(content=response_data, status_code=401)
 
     try:
         model_manager = get_model_manager()
@@ -250,7 +261,13 @@ async def list_models(request: Request):
             "description": "请求错误",
             "content": {
                 "application/json": {
-                                    "example": {"detail": f"File too large. Maximum size is {settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB"}
+                    "example": {
+                        "error_code": "INVALID_PARAMETER",
+                        "message": f"File too large. Maximum size is {settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB",
+                        "task_id": "",
+                        "timestamp": "2025-01-31T12:00:00Z",
+                        "details": {}
+                    }
                 }
             },
         },
@@ -258,7 +275,13 @@ async def list_models(request: Request):
             "description": "认证失败",
             "content": {
                 "application/json": {
-                    "example": {"detail": "Invalid API key"}
+                    "example": {
+                        "error_code": "AUTHENTICATION_FAILED",
+                        "message": "Invalid API key",
+                        "task_id": "",
+                        "timestamp": "2025-01-31T12:00:00Z",
+                        "details": {}
+                    }
                 }
             },
         },
@@ -314,155 +337,188 @@ async def create_transcription(
     audio_path = None
     normalized_audio_path = None
 
+    # 性能计时
+    request_start_time = time.time()
+
     logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}, "
                 f"speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}")
 
-    try:
-        # 可选鉴权 (支持 Bearer Token)
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            if settings.APPTOKEN and token != settings.APPTOKEN:
-                raise HTTPException(status_code=401, detail="Invalid API key")
-        elif settings.APPTOKEN:
-            # 如果配置了 APPTOKEN 但请求没有提供
-            result, _ = validate_token(request)
-            if not result:
-                raise HTTPException(status_code=401, detail="Invalid authentication")
+    # 获取音频处理服务
+    audio_service = get_audio_service()
 
-        # 读取上传的音频文件
-        audio_data = await file.read()
-        if not audio_data:
-            raise HTTPException(status_code=400, detail="Empty audio file")
+    with active_request_counter():
+        try:
+            # 可选鉴权 (支持 Bearer Token)
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+                if settings.APPTOKEN and token != settings.APPTOKEN:
+                    response_data = create_error_response(
+                        error_code="AUTHENTICATION_FAILED",
+                        message="Invalid API key",
+                    )
+                    return JSONResponse(content=response_data, status_code=401)
+            elif settings.APPTOKEN:
+                # 如果配置了 APPTOKEN 但请求没有提供
+                result, _ = validate_token(request)
+                if not result:
+                    response_data = create_error_response(
+                        error_code="AUTHENTICATION_FAILED",
+                        message="Invalid authentication",
+                    )
+                    return JSONResponse(content=response_data, status_code=401)
 
-        file_size = len(audio_data)
-        logger.info(f"[OpenAI API] 音频文件大小: {file_size / 1024 / 1024:.2f}MB")
+            # 读取上传的音频文件
+            audio_data = await file.read()
 
-        # 检查文件大小 (OpenAI 限制 25MB，这里扩展到 100MB)
-        if file_size > settings.MAX_AUDIO_SIZE:
-            max_mb = settings.MAX_AUDIO_SIZE // 1024 // 1024
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size is {max_mb}MB"
+            # 使用音频服务处理上传的音频文件
+            normalized_audio_path, audio_duration, audio_path = await audio_service.process_upload_file(
+                audio_data=audio_data,
+                filename=file.filename,
+                sample_rate=16000,
             )
 
-        # 检测音频格式并保存临时文件
-        file_suffix = get_audio_file_suffix(
-            audio_address=file.filename,
-            audio_data=audio_data
-        )
-        audio_path = save_audio_to_temp_file(audio_data, file_suffix)
-        logger.info(f"[OpenAI API] 临时文件: {audio_path}")
+            # 映射模型 ID
+            mapped_model_id = map_model_id(model)
 
-        # 标准化音频格式
-        normalized_audio_path = normalize_audio_for_asr(audio_path, target_sr=16000)
+            # 获取 ASR 引擎
+            model_manager = get_model_manager()
+            asr_engine = model_manager.get_asr_engine(mapped_model_id)
 
-        # 获取音频时长
-        audio_duration = get_audio_duration(normalized_audio_path)
-        logger.info(f"[OpenAI API] 音频时长: {audio_duration:.1f}s")
+            # 执行语音识别
+            # 注：prompt 参数接收但不使用，FunASR 热词格式与 OpenAI prompt 不兼容
+            asr_result = await run_sync(
+                asr_engine.transcribe_long_audio,
+                audio_path=normalized_audio_path,
+                hotwords="",
+                enable_punctuation=True,
+                enable_itn=True,
+                sample_rate=16000,
+                enable_speaker_diarization=enable_speaker_diarization,
+                word_timestamps=word_timestamps,
+            )
 
-        # 映射模型 ID
-        mapped_model_id = map_model_id(model)
+            logger.info(f"[OpenAI API] 识别完成: {len(asr_result.text)} 字符")
 
-        # 获取 ASR 引擎
-        model_manager = get_model_manager()
-        asr_engine = model_manager.get_asr_engine(mapped_model_id)
+            # 计算请求处理时间
+            request_duration = time.time() - request_start_time
 
-        # 执行语音识别
-        # 注：prompt 参数接收但不使用，FunASR 热词格式与 OpenAI prompt 不兼容
-        asr_result = await run_sync(
-            asr_engine.transcribe_long_audio,
-            audio_path=normalized_audio_path,
-            hotwords="",
-            enable_punctuation=True,
-            enable_itn=True,
-            sample_rate=16000,
-            enable_speaker_diarization=enable_speaker_diarization,
-            word_timestamps=word_timestamps,
-        )
+            # 记录Prometheus指标
+            record_transcription_metrics(
+                model_id=model,
+                status="success",
+                duration_sec=request_duration,
+                audio_duration_sec=audio_duration,
+            )
 
-        logger.info(f"[OpenAI API] 识别完成: {len(asr_result.text)} 字符")
+            # 构建分段信息
+            segments = []
+            words = []
+            for i, seg in enumerate(asr_result.segments):
+                segments.append(TranscriptionSegment(
+                    id=i,
+                    seek=int(seg.start_time * 100),
+                    start=seg.start_time,
+                    end=seg.end_time,
+                    text=seg.text,
+                    speaker=seg.speaker_id,
+                ))
+                # 收集字词级时间戳
+                if seg.word_tokens:
+                    for wt in seg.word_tokens:
+                        words.append(TranscriptionWord(
+                            word=wt.text,
+                            start=wt.start_time,
+                            end=wt.end_time,
+                        ))
 
-        # 构建分段信息
-        segments = []
-        words = []
-        for i, seg in enumerate(asr_result.segments):
-            segments.append(TranscriptionSegment(
-                id=i,
-                seek=int(seg.start_time * 100),
-                start=seg.start_time,
-                end=seg.end_time,
-                text=seg.text,
-                speaker=seg.speaker_id,
-            ))
-            # 收集字词级时间戳
-            if seg.word_tokens:
-                for wt in seg.word_tokens:
-                    words.append(TranscriptionWord(
-                        word=wt.text,
-                        start=wt.start_time,
-                        end=wt.end_time,
-                    ))
+            # 检测语言 (简单实现)
+            detected_language = language or "zh"
+            if not language:
+                # 简单的语言检测：检查是否包含中文字符
+                import re
+                if re.search(r'[\u4e00-\u9fff]', asr_result.text):
+                    detected_language = "zh"
+                else:
+                    detected_language = "en"
 
-        # 检测语言 (简单实现)
-        detected_language = language or "zh"
-        if not language:
-            # 简单的语言检测：检查是否包含中文字符
-            import re
-            if re.search(r'[\u4e00-\u9fff]', asr_result.text):
-                detected_language = "zh"
-            else:
-                detected_language = "en"
+            # 根据 response_format 返回不同格式
+            if response_format == ResponseFormat.TEXT:
+                return PlainTextResponse(content=asr_result.text)
 
-        # 根据 response_format 返回不同格式
-        if response_format == ResponseFormat.TEXT:
-            return PlainTextResponse(content=asr_result.text)
+            elif response_format == ResponseFormat.SRT:
+                if not segments:
+                    # 如果没有分段，创建一个完整的分段
+                    segments = [TranscriptionSegment(
+                        id=0,
+                        start=0,
+                        end=audio_duration,
+                        text=asr_result.text,
+                    )]
+                srt_content = generate_srt(segments)
+                return PlainTextResponse(content=srt_content, media_type="text/plain")
 
-        elif response_format == ResponseFormat.SRT:
-            if not segments:
-                # 如果没有分段，创建一个完整的分段
-                segments = [TranscriptionSegment(
-                    id=0,
-                    start=0,
-                    end=audio_duration,
+            elif response_format == ResponseFormat.VTT:
+                if not segments:
+                    segments = [TranscriptionSegment(
+                        id=0,
+                        start=0,
+                        end=audio_duration,
+                        text=asr_result.text,
+                    )]
+                vtt_content = generate_vtt(segments)
+                return PlainTextResponse(content=vtt_content, media_type="text/vtt")
+
+            elif response_format == ResponseFormat.VERBOSE_JSON:
+                return JSONResponse(content=VerboseTranscriptionResponse(
+                    task="transcribe",
+                    language=detected_language,
+                    duration=audio_duration,
                     text=asr_result.text,
-                )]
-            srt_content = generate_srt(segments)
-            return PlainTextResponse(content=srt_content, media_type="text/plain")
+                    segments=[seg.model_dump() for seg in segments],
+                    words=[w.model_dump() for w in words] if words else None,
+                ).model_dump())
 
-        elif response_format == ResponseFormat.VTT:
-            if not segments:
-                segments = [TranscriptionSegment(
-                    id=0,
-                    start=0,
-                    end=audio_duration,
-                    text=asr_result.text,
-                )]
-            vtt_content = generate_vtt(segments)
-            return PlainTextResponse(content=vtt_content, media_type="text/vtt")
+            else:  # JSON (默认)
+                return JSONResponse(content={"text": asr_result.text})
 
-        elif response_format == ResponseFormat.VERBOSE_JSON:
-            return JSONResponse(content=VerboseTranscriptionResponse(
-                task="transcribe",
-                language=detected_language,
-                duration=audio_duration,
-                text=asr_result.text,
-                segments=[seg.model_dump() for seg in segments],
-                words=[w.model_dump() for w in words] if words else None,
-            ).model_dump())
+        except HTTPException as http_exc:
+            # 将 HTTPException 转换为标准错误格式
+            logger.error(f"[OpenAI API] HTTP异常: {http_exc.detail}")
 
-        else:  # JSON (默认)
-            return JSONResponse(content={"text": asr_result.text})
+            # 记录错误指标
+            request_duration = time.time() - request_start_time
+            record_transcription_metrics(
+                model_id=model,
+                status="error",
+                duration_sec=request_duration,
+                audio_duration_sec=0,
+            )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[OpenAI API] 转写失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            response_data = create_error_response(
+                error_code="DEFAULT_CLIENT_ERROR" if http_exc.status_code < 500 else "DEFAULT_SERVER_ERROR",
+                message=http_exc.detail,
+            )
+            return JSONResponse(content=response_data, status_code=http_exc.status_code)
+        except Exception as e:
+            logger.error(f"[OpenAI API] 转写失败: {e}")
 
-    finally:
-        # 清理临时文件
-        if audio_path:
-            cleanup_temp_file(audio_path)
-        if normalized_audio_path and normalized_audio_path != audio_path:
-            cleanup_temp_file(normalized_audio_path)
+            # 记录错误指标
+            request_duration = time.time() - request_start_time
+            record_transcription_metrics(
+                model_id=model,
+                status="error",
+                duration_sec=request_duration,
+                audio_duration_sec=0,
+            )
+
+            # 使用标准错误格式
+            response_data = create_error_response(
+                error_code="DEFAULT_SERVER_ERROR",
+                message=str(e),
+            )
+            return JSONResponse(content=response_data, status_code=500)
+
+        finally:
+            # 使用音频服务清理临时文件
+            audio_service.cleanup(audio_path, normalized_audio_path)

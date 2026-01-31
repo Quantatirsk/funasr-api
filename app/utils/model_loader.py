@@ -220,7 +220,7 @@ def preload_models() -> dict:
     if settings.ASR_MODEL_MODE.lower() in ["all", "offline"]:
         try:
             logger.info("📥 正在加载语音活动检测模型(VAD)...")
-            from ..services.asr.engine import get_global_vad_model
+            from ..services.asr.engines import get_global_vad_model
 
             device = asr_engine.device if asr_engine else settings.DEVICE
             vad_model = get_global_vad_model(device)
@@ -241,7 +241,7 @@ def preload_models() -> dict:
     # 4. 预加载标点符号模型 (离线版)
     try:
         logger.info("📥 正在加载标点符号模型(离线)...")
-        from ..services.asr.engine import get_global_punc_model
+        from ..services.asr.engines import get_global_punc_model
 
         device = asr_engine.device if asr_engine else settings.DEVICE
         punc_model = get_global_punc_model(device)
@@ -261,7 +261,7 @@ def preload_models() -> dict:
     if settings.ASR_ENABLE_REALTIME_PUNC:
         try:
             logger.info("📥 正在加载实时标点符号模型...")
-            from ..services.asr.engine import get_global_punc_realtime_model
+            from ..services.asr.engines import get_global_punc_realtime_model
 
             device = asr_engine.device if asr_engine else settings.DEVICE
             punc_realtime_model = get_global_punc_realtime_model(device)

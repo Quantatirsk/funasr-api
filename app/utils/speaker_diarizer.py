@@ -58,7 +58,7 @@ def get_global_diarization_pipeline():
             try:
                 from modelscope.pipelines import pipeline
                 from modelscope.utils.constant import Tasks
-                from ..services.asr.engine import resolve_model_path
+                from ..infrastructure.model_utils import resolve_model_path
 
                 model_id = 'iic/speech_campplus_speaker-diarization_common'
                 model_path = resolve_model_path(model_id)

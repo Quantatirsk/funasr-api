@@ -1,22 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-ASR引擎模块 - 支持多种ASR引擎
+FunASR语音识别引擎模块
+支持多种ASR模型架构（Paraformer、Fun-ASR-Nano等）
 """
 
-import torch
+import time
 import logging
-import threading
 from typing import Optional, Dict, List, Any, cast
-from abc import ABC, abstractmethod
-from enum import Enum
-from dataclasses import dataclass
 from funasr import AutoModel
 
-from ...core.config import settings
-from ...core.exceptions import DefaultServerErrorException
-from ...utils.audio import get_audio_duration
-from ...utils.text_processing import apply_itn_to_text
-from .loaders import ModelLoaderFactory, BaseModelLoader
+from app.core.config import settings
+from app.core.exceptions import DefaultServerErrorException
+from app.core.logging import log_inference_metrics
+from app.utils.text_processing import apply_itn_to_text
+from app.infrastructure import resolve_model_path
+from app.services.asr.loaders import ModelLoaderFactory, BaseModelLoader
+from app.services.asr.engines.base import RealTimeASREngine, ASRRawResult, ASRSegmentResult
+from app.services.asr.engines.global_models import get_global_vad_model, get_global_punc_model
+
+
+logger = logging.getLogger(__name__)
 
 
 class TempAutoModelWrapper:
@@ -43,431 +46,6 @@ class TempAutoModelWrapper:
     def generate(self, *args: Any, **kwargs: Any) -> Any:
         """调用AutoModel.generate"""
         return AutoModel.generate(cast(Any, self), *args, **kwargs)
-
-
-@dataclass
-class WordToken:
-    """字词级时间戳信息"""
-
-    text: str  # 字词文本
-    start_time: float  # 开始时间（秒）
-    end_time: float  # 结束时间（秒）
-
-
-@dataclass
-class ASRSegmentResult:
-    """ASR 分段识别结果"""
-
-    text: str  # 该段识别文本
-    start_time: float  # 开始时间（秒）
-    end_time: float  # 结束时间（秒）
-    speaker_id: Optional[str] = None  # 说话人ID（多说话人模式）
-    word_tokens: Optional[List[WordToken]] = None  # 字词级时间戳（可选）
-
-
-@dataclass
-class ASRFullResult:
-    """ASR 完整识别结果（支持长音频）"""
-
-    text: str  # 完整识别文本
-    segments: List[ASRSegmentResult]  # 分段结果
-    duration: float  # 音频总时长（秒）
-
-
-@dataclass
-class ASRRawResult:
-    """ASR 原始识别结果（包含时间戳）"""
-
-    text: str  # 完整识别文本
-    segments: List[ASRSegmentResult]  # 分段结果（从 VAD 时间戳解析）
-
-
-logger = logging.getLogger(__name__)
-
-
-def resolve_model_path(model_id: Optional[str]) -> str:
-    """将模型 ID 解析为本地缓存路径（如果存在）
-
-    FunASR/ModelScope 的缓存目录结构:
-    ~/.cache/modelscope/hub/{model_id}/
-
-    如果本地缓存存在，返回本地路径；否则返回原始 model_id
-    """
-    import os
-    from pathlib import Path
-
-    if not model_id:
-        raise ValueError("model_id 不能为空")
-
-    # 获取 ModelScope 缓存目录
-    cache_dir = os.environ.get("MODELSCOPE_CACHE", os.path.expanduser("~/.cache/modelscope"))
-
-    # ModelScope 有两种可能的缓存路径结构
-    possible_paths = [
-        Path(cache_dir) / "hub" / model_id,
-        Path(cache_dir) / "models" / model_id,
-    ]
-
-    # 检查哪个路径存在
-    for local_path in possible_paths:
-        if local_path.exists() and local_path.is_dir():
-            resolved = str(local_path)
-            logger.info(f"模型 {model_id} 使用本地缓存: {resolved}")
-            return resolved
-
-    # 都不存在，返回模型ID（运行时会自动下载）
-    logger.warning(f"模型 {model_id} 本地缓存不存在，将在运行时下载")
-    return model_id
-
-
-class ModelType(Enum):
-    """模型类型枚举"""
-
-    OFFLINE = "offline"
-    REALTIME = "realtime"
-
-
-class BaseASREngine(ABC):
-    """基础ASR引擎抽象基类"""
-
-    # 默认最大音频时长限制（秒）
-    MAX_AUDIO_DURATION_SEC = 60.0
-
-    @abstractmethod
-    def transcribe_file(
-        self,
-        audio_path: str,
-        hotwords: str = "",
-        enable_punctuation: bool = False,
-        enable_itn: bool = False,
-        enable_vad: bool = False,
-        sample_rate: int = 16000,
-    ) -> str:
-        """转录音频文件"""
-        pass
-
-    @abstractmethod
-    def transcribe_file_with_vad(
-        self,
-        audio_path: str,
-        hotwords: str = "",
-        enable_punctuation: bool = True,
-        enable_itn: bool = True,
-        sample_rate: int = 16000,
-        **kwargs,
-    ) -> ASRRawResult:
-        """使用 VAD 转录音频文件，返回带时间戳分段的结果
-
-        Args:
-            audio_path: 音频文件路径
-            hotwords: 热词/上下文提示
-            enable_punctuation: 是否启用标点
-            enable_itn: 是否启用 ITN
-            sample_rate: 采样率
-            **kwargs: 额外参数（如 word_timestamps 字词级时间戳）
-
-        Returns:
-            ASRRawResult 包含文本和分段信息
-        """
-        pass
-
-    def transcribe_long_audio(
-        self,
-        audio_path: str,
-        hotwords: str = "",
-        enable_punctuation: bool = False,
-        enable_itn: bool = False,
-        sample_rate: int = 16000,
-        enable_speaker_diarization: bool = True,
-        word_timestamps: bool = False,
-    ) -> ASRFullResult:
-        """转录长音频文件（自动分段）
-
-        Args:
-            audio_path: 音频文件路径
-            hotwords: 热词
-            enable_punctuation: 是否启用标点
-            enable_itn: 是否启用 ITN
-            sample_rate: 采样率
-            enable_speaker_diarization: 是否启用说话人分离
-            word_timestamps: 是否返回字词级时间戳（仅部分模型支持）
-
-        Returns:
-            ASRFullResult: 包含完整文本、分段结果和时长的结果
-        """
-        from ...utils.audio_splitter import AudioSplitter
-
-        logger.info(f"[transcribe_long_audio] 音频: {audio_path}, speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}")
-
-        try:
-            # 获取音频时长
-            duration = get_audio_duration(audio_path)
-            logger.info(f"[transcribe_long_audio] 音频时长: {duration:.2f}秒")
-
-            # 短音频且不启用说话人分离：直接使用 VAD 识别
-            if duration <= self.MAX_AUDIO_DURATION_SEC and not enable_speaker_diarization:
-                raw_result = self.transcribe_file_with_vad(
-                    audio_path=audio_path,
-                    hotwords=hotwords,
-                    enable_punctuation=enable_punctuation,
-                    enable_itn=enable_itn,
-                    sample_rate=sample_rate,
-                    word_timestamps=word_timestamps,
-                )
-
-                segments = raw_result.segments
-                if not segments:
-                    segments = [
-                        ASRSegmentResult(
-                            text=raw_result.text,
-                            start_time=0.0,
-                            end_time=duration
-                        )
-                    ]
-
-                return ASRFullResult(
-                    text=raw_result.text,
-                    segments=segments,
-                    duration=duration,
-                )
-
-            # 长音频或多说话人：需要分段
-            speaker_segments = None
-            audio_segments = None
-
-            if enable_speaker_diarization:
-                # 多说话人：使用说话人分离
-                from ...utils.speaker_diarizer import SpeakerDiarizer
-
-                logger.info("使用说话人分离模式")
-                diarizer = SpeakerDiarizer()
-                speaker_segments = diarizer.split_audio_by_speakers(audio_path)
-
-                if not speaker_segments:
-                    logger.warning("说话人分离未检测到片段，fallback 到 VAD 分割")
-
-            if not speaker_segments:
-                # 单说话人：使用 VAD 分割
-                logger.info("使用 VAD 分割模式")
-                splitter = AudioSplitter(device=self.device)
-                audio_segments = splitter.split_audio_file(audio_path)
-
-            # 选择要处理的片段
-            segments_to_process = speaker_segments if speaker_segments else audio_segments
-            if not segments_to_process:
-                raise DefaultServerErrorException("音频分割失败：未生成任何片段")
-
-            logger.info(f"音频已分割为 {len(segments_to_process)} 段")
-
-            results: List[ASRSegmentResult] = []
-            all_texts: List[str] = []
-
-            # 使用批处理推理
-            batch_size = settings.ASR_BATCH_SIZE
-            logger.info(f"使用批处理推理，batch_size={batch_size}, word_timestamps={word_timestamps}")
-
-            for batch_start in range(0, len(segments_to_process), batch_size):
-                batch_end = min(batch_start + batch_size, len(segments_to_process))
-                batch_segments = segments_to_process[batch_start:batch_end]
-
-                logger.info(
-                    f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
-                    f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
-                )
-
-                try:
-                    # 批量推理，支持时间戳
-                    batch_results = self._transcribe_batch(
-                        segments=batch_segments,
-                        hotwords=hotwords,
-                        enable_punctuation=enable_punctuation,
-                        enable_itn=enable_itn,
-                        sample_rate=sample_rate,
-                        word_timestamps=word_timestamps,
-                    )
-
-                    for seg, result in zip(batch_segments, batch_results):
-                        if result and result.text:
-                            results.append(
-                                ASRSegmentResult(
-                                    text=result.text,
-                                    start_time=seg.start_sec,
-                                    end_time=seg.end_sec,
-                                    speaker_id=getattr(seg, 'speaker_id', None),
-                                    word_tokens=result.word_tokens if word_timestamps else None,
-                                )
-                            )
-                            all_texts.append(result.text)
-
-                    logger.info(f"批次推理完成，有效片段: {len([r for r in batch_results if r and r.text])}")
-
-                except Exception as e:
-                    logger.error(f"批次推理失败: {e}, 跳过该批次")
-
-            # 清理临时文件
-            try:
-                if enable_speaker_diarization and speaker_segments:
-                    from ...utils.speaker_diarizer import SpeakerDiarizer
-                    SpeakerDiarizer.cleanup_segments(speaker_segments)
-                elif audio_segments:
-                    AudioSplitter.cleanup_segments(audio_segments)
-            except Exception as e:
-                logger.warning(f"清理临时文件时出错: {e}")
-
-            full_text = "\n".join(all_texts)
-
-            logger.info(
-                f"长音频识别完成，共 {len(results)} 个有效分段，"
-                f"总字符数: {len(full_text)}"
-            )
-
-            return ASRFullResult(
-                text=full_text,
-                segments=results,
-                duration=duration,
-            )
-
-        except Exception as e:
-            logger.error(f"长音频识别失败: {e}")
-            raise DefaultServerErrorException(f"长音频识别失败: {str(e)}")
-
-    @abstractmethod
-    def is_model_loaded(self) -> bool:
-        """检查模型是否已加载"""
-        pass
-
-    @property
-    @abstractmethod
-    def device(self) -> str:
-        """获取设备信息"""
-        pass
-
-    @property
-    @abstractmethod
-    def supports_realtime(self) -> bool:
-        """是否支持实时识别"""
-        pass
-
-    def _transcribe_batch(
-        self,
-        segments: List[Any],
-        hotwords: str = "",
-        enable_punctuation: bool = False,
-        enable_itn: bool = False,
-        sample_rate: int = 16000,
-        word_timestamps: bool = False,
-    ) -> List[ASRSegmentResult]:
-        """批量推理多个音频片段
-
-        Args:
-            segments: 音频片段列表（每个片段需要有 temp_file 属性）
-            hotwords: 热词
-            enable_punctuation: 是否启用标点
-            enable_itn: 是否启用 ITN
-            sample_rate: 采样率
-            word_timestamps: 是否返回字词级时间戳
-
-        Returns:
-            ASRSegmentResult 列表，与输入片段一一对应
-        """
-        # 默认实现：逐个推理（子类可以重写实现真正的批处理）
-        results = []
-        for idx, seg in enumerate(segments):
-            try:
-                if not seg.temp_file:
-                    logger.warning(f"批处理片段 {idx + 1} 临时文件不存在，跳过")
-                    results.append(ASRSegmentResult(text="", start_time=0.0, end_time=0.0))
-                    continue
-
-                if word_timestamps:
-                    # 需要时间戳：使用 transcribe_file_with_vad
-                    raw_result = self.transcribe_file_with_vad(
-                        audio_path=seg.temp_file,
-                        hotwords=hotwords,
-                        enable_punctuation=enable_punctuation,
-                        enable_itn=enable_itn,
-                        sample_rate=sample_rate,
-                        word_timestamps=True,
-                    )
-                    if raw_result.segments:
-                        result_seg = raw_result.segments[0]
-                        results.append(
-                            ASRSegmentResult(
-                                text=result_seg.text,
-                                start_time=seg.start_sec,
-                                end_time=seg.end_sec,
-                                speaker_id=getattr(seg, 'speaker_id', None),
-                                word_tokens=result_seg.word_tokens,
-                            )
-                        )
-                    else:
-                        results.append(
-                            ASRSegmentResult(
-                                text=raw_result.text,
-                                start_time=seg.start_sec,
-                                end_time=seg.end_sec,
-                                speaker_id=getattr(seg, 'speaker_id', None),
-                            )
-                        )
-                else:
-                    # 不需要时间戳：使用 transcribe_file
-                    text = self.transcribe_file(
-                        audio_path=seg.temp_file,
-                        hotwords=hotwords,
-                        enable_punctuation=enable_punctuation,
-                        enable_itn=enable_itn,
-                        enable_vad=False,
-                        sample_rate=sample_rate,
-                    )
-                    results.append(
-                        ASRSegmentResult(
-                            text=text or "",
-                            start_time=seg.start_sec,
-                            end_time=seg.end_sec,
-                            speaker_id=getattr(seg, 'speaker_id', None),
-                        )
-                    )
-            except Exception as e:
-                logger.error(f"批处理片段 {idx + 1} 推理失败: {e}")
-                results.append(
-                    ASRSegmentResult(
-                        text="",
-                        start_time=getattr(seg, 'start_sec', 0.0),
-                        end_time=getattr(seg, 'end_sec', 0.0),
-                        speaker_id=getattr(seg, 'speaker_id', None),
-                    )
-                )
-
-        return results
-
-    def _detect_device(self, device: str = "auto") -> str:
-        """检测可用设备"""
-        if device == "auto":
-            if torch.cuda.is_available():
-                return "cuda:0"
-            else:
-                return "cpu"
-        return device
-
-
-class RealTimeASREngine(BaseASREngine):
-    """实时ASR引擎抽象基类"""
-
-    @property
-    def supports_realtime(self) -> bool:
-        """支持实时识别"""
-        return True
-
-    @abstractmethod
-    def transcribe_websocket(
-        self,
-        audio_chunk: bytes,
-        cache: Optional[Dict] = None,
-        is_final: bool = False,
-        **kwargs,
-    ) -> str:
-        """WebSocket流式语音识别"""
-        pass
 
 
 class FunASREngine(RealTimeASREngine):
@@ -587,6 +165,7 @@ class FunASREngine(RealTimeASREngine):
         enable_vad: bool = False,
         sample_rate: int = 16000,
         language: Optional[str] = None,
+        task_id: Optional[str] = None,
     ) -> str:
         """使用FunASR转录音频文件
 
@@ -600,6 +179,10 @@ class FunASREngine(RealTimeASREngine):
                 "离线模型未加载，无法进行文件识别。"
                 "请将 ASR_MODEL_MODE 设置为 offline 或 all"
             )
+
+        # 性能计时
+        start_time = time.time()
+        model_id = getattr(self._offline_loader, 'model_type', 'unknown')
 
         try:
             # 使用加载器准备推理参数
@@ -641,11 +224,51 @@ class FunASREngine(RealTimeASREngine):
                     text = apply_itn_to_text(text)
                     logger.debug(f"应用ITN处理后: {text}")
 
+                # 记录性能指标
+                duration_ms = (time.time() - start_time) * 1000
+                try:
+                    from app.utils.audio import get_audio_duration
+                    audio_duration = get_audio_duration(audio_path)
+                except Exception:
+                    audio_duration = 0
+
+                log_inference_metrics(
+                    logger=logger,
+                    message="单文件识别完成",
+                    task_id=task_id,
+                    duration_ms=duration_ms,
+                    audio_duration_sec=audio_duration,
+                    model_id=model_id,
+                    status="success",
+                    enable_punctuation=enable_punctuation,
+                    enable_itn=enable_itn,
+                    enable_vad=enable_vad,
+                )
+
                 return text
             else:
                 return ""
 
         except Exception as e:
+            # 记录失败指标
+            duration_ms = (time.time() - start_time) * 1000
+            try:
+                from app.utils.audio import get_audio_duration
+                audio_duration = get_audio_duration(audio_path)
+            except Exception:
+                audio_duration = 0
+
+            log_inference_metrics(
+                logger=logger,
+                message="单文件识别失败",
+                task_id=task_id,
+                duration_ms=duration_ms,
+                audio_duration_sec=audio_duration,
+                model_id=model_id,
+                status="error",
+                error=str(e),
+            )
+
             raise DefaultServerErrorException(f"语音识别失败: {str(e)}")
 
     def transcribe_file_with_vad(
@@ -986,144 +609,33 @@ class FunASREngine(RealTimeASREngine):
         """获取设备信息"""
         return self._device
 
-
-# 全局ASR引擎实例缓存
-_asr_engine: Optional[BaseASREngine] = None
-
-# 全局语音活动检测(VAD)模型缓存（避免重复加载）
-_global_vad_model = None
-_vad_model_lock = threading.Lock()
-
-# 全局标点符号模型缓存（避免重复加载）
-_global_punc_model = None
-_punc_model_lock = threading.Lock()
-
-# 全局实时标点符号模型缓存（避免重复加载）
-_global_punc_realtime_model = None
-_punc_realtime_model_lock = threading.Lock()
+    @property
+    def model_id(self) -> str:
+        """获取模型ID"""
+        if self._offline_loader:
+            return self._offline_loader.model_type
+        return "funasr-unknown"
 
 
-def get_global_vad_model(device: str):
-    """获取全局语音活动检测(VAD)模型实例"""
-    global _global_vad_model
+# 自动注册 FunASR 引擎（由 manager.py 显式触发）
+def _register_funasr_engine(register_func, model_config_cls):
+    """注册 FunASR 引擎到引擎注册表
 
-    with _vad_model_lock:
-        if _global_vad_model is None:
-            try:
-                # 解析模型路径：优先使用本地缓存
-                resolved_vad_path = resolve_model_path(settings.VAD_MODEL)
-                logger.info(f"正在加载全局语音活动检测(VAD)模型: {resolved_vad_path}")
+    Args:
+        register_func: register_engine 函数
+        model_config_cls: ModelConfig 类
+    """
+    from app.core.config import settings
 
-                _global_vad_model = AutoModel(
-                    model=resolved_vad_path,
-                    device=device,
-                    speech_noise_thres=0.8,  # VAD 语音噪声阈值（FunASR默认0.6，设为0.7稍微严格一些，分段更碎）
-                    **settings.FUNASR_AUTOMODEL_KWARGS,
-                )
-                logger.info("全局语音活动检测(VAD)模型加载成功 (speech_noise_thres=0.8)")
-            except Exception as e:
-                logger.error(f"全局语音活动检测(VAD)模型加载失败: {str(e)}")
-                _global_vad_model = None
-                raise
+    def _create_funasr_engine(config) -> "FunASREngine":
+        return FunASREngine(
+            offline_model_path=config.models.get("offline"),
+            realtime_model_path=config.models.get("realtime"),
+            device=settings.DEVICE,
+            vad_model=settings.VAD_MODEL,
+            punc_model=settings.PUNC_MODEL,
+            punc_realtime_model=settings.PUNC_REALTIME_MODEL,
+            extra_model_kwargs=config.extra_kwargs,
+        )
 
-    return _global_vad_model
-
-
-def clear_global_vad_model():
-    """清理全局语音活动检测(VAD)模型缓存"""
-    global _global_vad_model
-
-    with _vad_model_lock:
-        if _global_vad_model is not None:
-            del _global_vad_model
-            _global_vad_model = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.info("全局语音活动检测(VAD)模型缓存已清理")
-
-
-def get_global_punc_model(device: str):
-    """获取全局标点符号模型实例（离线版）"""
-    global _global_punc_model
-
-    with _punc_model_lock:
-        if _global_punc_model is None:
-            try:
-                # 解析模型路径：优先使用本地缓存
-                resolved_punc_path = resolve_model_path(settings.PUNC_MODEL)
-                logger.info(f"正在加载全局标点符号模型（离线）: {resolved_punc_path}")
-
-                _global_punc_model = AutoModel(
-                    model=resolved_punc_path,
-                    device=device,
-                    **settings.FUNASR_AUTOMODEL_KWARGS,
-                )
-                logger.info("全局标点符号模型（离线）加载成功")
-            except Exception as e:
-                logger.error(f"全局标点符号模型（离线）加载失败: {str(e)}")
-                _global_punc_model = None
-                raise
-
-    return _global_punc_model
-
-
-def clear_global_punc_model():
-    """清理全局标点符号模型缓存"""
-    global _global_punc_model
-
-    with _punc_model_lock:
-        if _global_punc_model is not None:
-            del _global_punc_model
-            _global_punc_model = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.info("全局标点符号模型（离线）缓存已清理")
-
-
-def get_global_punc_realtime_model(device: str):
-    """获取全局实时标点符号模型实例"""
-    global _global_punc_realtime_model
-
-    with _punc_realtime_model_lock:
-        if _global_punc_realtime_model is None:
-            try:
-                # 解析模型路径：优先使用本地缓存
-                resolved_punc_realtime_path = resolve_model_path(settings.PUNC_REALTIME_MODEL)
-                logger.info(f"正在加载全局标点符号模型（实时）: {resolved_punc_realtime_path}")
-
-                _global_punc_realtime_model = AutoModel(
-                    model=resolved_punc_realtime_path,
-                    device=device,
-                    **settings.FUNASR_AUTOMODEL_KWARGS,
-                )
-                logger.info("全局标点符号模型（实时）加载成功")
-            except Exception as e:
-                logger.error(f"全局标点符号模型（实时）加载失败: {str(e)}")
-                _global_punc_realtime_model = None
-                raise
-
-    return _global_punc_realtime_model
-
-
-def clear_global_punc_realtime_model():
-    """清理全局实时标点符号模型缓存"""
-    global _global_punc_realtime_model
-
-    with _punc_realtime_model_lock:
-        if _global_punc_realtime_model is not None:
-            del _global_punc_realtime_model
-            _global_punc_realtime_model = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.info("全局标点符号模型（实时）缓存已清理")
-
-
-def get_asr_engine() -> BaseASREngine:
-    """获取全局ASR引擎实例"""
-    global _asr_engine
-    if _asr_engine is None:
-        from .manager import get_model_manager
-
-        model_manager = get_model_manager()
-        _asr_engine = model_manager.get_asr_engine()
-    return _asr_engine
+    register_func("funasr", _create_funasr_engine)

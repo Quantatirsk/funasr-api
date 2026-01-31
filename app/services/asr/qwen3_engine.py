@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import torch
 import numpy as np
 
-from .engine import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult, WordToken
+from .engines import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult, WordToken
 from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException
 from ...utils.audio import get_audio_duration
@@ -488,3 +488,23 @@ class Qwen3ASREngine(BaseASREngine):
         except Exception as e:
             logger.error(f"结束流式识别失败: {e}")
             raise DefaultServerErrorException(f"结束流式识别失败: {e}")
+
+
+# 自动注册 Qwen3 引擎（由 manager.py 显式触发）
+def _register_qwen3_engine(register_func, model_config_cls):
+    """注册 Qwen3 引擎到引擎注册表
+
+    Args:
+        register_func: register_engine 函数
+        model_config_cls: ModelConfig 类
+    """
+    from app.core.config import settings
+
+    def _create_qwen3_engine(config) -> "Qwen3ASREngine":
+        return Qwen3ASREngine(
+            model_path=config.models.get("offline"),
+            device=settings.DEVICE,
+            **config.extra_kwargs
+        )
+
+    register_func("qwen3", _create_qwen3_engine)

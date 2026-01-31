@@ -24,6 +24,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from ...core.executor import run_sync
+from ...core.exceptions import create_error_response
 from ...services.asr.manager import get_model_manager
 from ...services.asr.qwen3_engine import Qwen3ASREngine, Qwen3StreamingState
 from ...services.websocket_asr import get_aliyun_websocket_asr_service
@@ -152,7 +153,7 @@ class Qwen3WebSocketASRService:
                         # 开始识别
                         if ctx.state != ConnectionState.READY:
                             await self._send_error(
-                                websocket, "识别已在进行中", task_id
+                                websocket, "识别已在进行中", task_id, error_code="INVALID_STATE"
                             )
                             continue
 
@@ -170,13 +171,15 @@ class Qwen3WebSocketASRService:
                         break
 
                     else:
-                        await self._send_error(websocket, f"未知消息类型: {msg_type}", task_id)
+                        await self._send_error(
+                            websocket, f"未知消息类型: {msg_type}", task_id, error_code="INVALID_MESSAGE"
+                        )
 
                 elif "bytes" in message:
                     # 处理音频数据
                     if ctx.state not in (ConnectionState.STARTED, ConnectionState.STREAMING):
                         await self._send_error(
-                            websocket, "请先发送 start 消息", task_id
+                            websocket, "请先发送 start 消息", task_id, error_code="INVALID_STATE"
                         )
                         continue
 
@@ -192,7 +195,7 @@ class Qwen3WebSocketASRService:
             logger.info(f"[{task_id}] WebSocket 连接已断开")
         except Exception as e:
             logger.error(f"[{task_id}] 处理连接时出错: {e}")
-            await self._send_error(websocket, str(e), task_id)
+            await self._send_error(websocket, str(e), task_id, error_code="DEFAULT_SERVER_ERROR")
         finally:
             logger.info(f"[{task_id}] Qwen3-ASR WebSocket 连接已关闭")
 
@@ -237,7 +240,7 @@ class Qwen3WebSocketASRService:
 
         except Exception as e:
             logger.error(f"[{task_id}] 启动识别失败: {e}")
-            await self._send_error(websocket, f"启动识别失败: {e}", task_id)
+            await self._send_error(websocket, f"启动识别失败: {e}", task_id, error_code="DEFAULT_SERVER_ERROR")
             raise
 
     async def _process_audio_chunk(
@@ -320,7 +323,7 @@ class Qwen3WebSocketASRService:
 
         except Exception as e:
             logger.error(f"[{task_id}] 处理音频块失败: {e}")
-            await self._send_error(websocket, f"处理音频失败: {e}", task_id)
+            await self._send_error(websocket, f"处理音频失败: {e}", task_id, error_code="DEFAULT_SERVER_ERROR")
             return False
 
     async def _stop_recognition(self, websocket: WebSocket, ctx: ConnectionContext, task_id: str):
@@ -359,16 +362,27 @@ class Qwen3WebSocketASRService:
 
         except Exception as e:
             logger.error(f"[{task_id}] 结束识别失败: {e}")
-            await self._send_error(websocket, f"结束识别失败: {e}", task_id)
+            await self._send_error(websocket, f"结束识别失败: {e}", task_id, error_code="DEFAULT_SERVER_ERROR")
 
-    async def _send_error(self, websocket: WebSocket, message: str, task_id: str):
-        """发送错误消息"""
+    async def _send_error(
+        self,
+        websocket: WebSocket,
+        message: str,
+        task_id: str,
+        error_code: str = "DEFAULT_SERVER_ERROR",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """发送错误消息（使用统一错误格式）"""
         try:
-            await websocket.send_json({
-                "type": "error",
-                "task_id": task_id,
-                "message": message,
-            })
+            error_response = create_error_response(
+                error_code=error_code,
+                message=message,
+                task_id=task_id,
+                details=details,
+            )
+            # WebSocket 错误消息添加 type 字段以兼容现有协议
+            error_response["type"] = "error"
+            await websocket.send_json(error_response)
         except Exception:
             pass
 

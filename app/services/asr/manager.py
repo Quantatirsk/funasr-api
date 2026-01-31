@@ -6,13 +6,137 @@ ASR模型管理器
 """
 
 import json
+import threading
+import logging
+from collections import OrderedDict
 import torch
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
+from typing import Callable
 from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException, InvalidParameterException
-from .engine import BaseASREngine, FunASREngine
+from .engines import BaseASREngine
+
+logger = logging.getLogger(__name__)
+
+# 引擎注册表（使用Any避免循环导入问题）
+_ENGINE_REGISTRY: Dict[str, Callable[[Any], BaseASREngine]] = {}
+
+
+def register_engine(engine_type: str, factory: Callable[[Any], BaseASREngine]):
+    """注册ASR引擎工厂函数"""
+    _ENGINE_REGISTRY[engine_type] = factory
+    logger.info(f"注册引擎类型: {engine_type}")
+
+
+def get_registered_engine_types() -> List[str]:
+    """获取所有已注册的引擎类型"""
+    return list(_ENGINE_REGISTRY.keys())
+
+
+class LRUModelCache(OrderedDict):
+    """LRU模型缓存，限制同时加载的模型数量"""
+
+    def __init__(self, capacity: int = 3, memory_threshold_gb: float = 6.0):
+        super().__init__()
+        self._capacity = capacity
+        self._memory_threshold_gb = memory_threshold_gb
+        self._lock = threading.RLock()
+        self._unload_callback: Optional[Callable[[str], None]] = None
+
+    def set_unload_callback(self, callback: Callable[[str], None]):
+        """设置模型卸载回调函数"""
+        self._unload_callback = callback
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """获取模型，并将其移到最近使用的位置"""
+        with self._lock:
+            if key in self:
+                self.move_to_end(key)
+                return self[key]
+            return default
+
+    def put(self, key: str, value: BaseASREngine) -> None:
+        """添加或更新模型"""
+        with self._lock:
+            if key in self:
+                self.move_to_end(key)
+                self[key] = value
+            else:
+                # 检查内存并清理
+                self._check_memory_and_evict_if_needed()
+                # 如果达到容量限制，淘汰最久未使用的
+                if len(self) >= self._capacity:
+                    self._evict_lru_model()
+                self[key] = value
+
+    def _evict_lru_model(self) -> None:
+        """淘汰最久未使用的模型"""
+        if not self:
+            return
+        oldest_key = next(iter(self))
+        logger.info(f"LRU缓存淘汰模型: {oldest_key}")
+        self._unload_model(oldest_key)
+        del self[oldest_key]
+
+    def _unload_model(self, model_id: str) -> None:
+        """卸载模型并清理显存"""
+        if model_id not in self:
+            return
+        engine = self[model_id]
+        try:
+            # 调用引擎的清理方法（如果存在）
+            if hasattr(engine, 'cleanup') and callable(engine.cleanup):
+                engine.cleanup()
+            logger.info(f"模型 {model_id} 已卸载")
+        except Exception as e:
+            logger.warning(f"卸载模型 {model_id} 时出错: {e}")
+
+    def _check_memory_and_evict_if_needed(self) -> None:
+        """检查GPU内存使用，如果超过阈值则清理"""
+        if not torch.cuda.is_available():
+            return
+
+        memory_allocated = torch.cuda.memory_allocated() / 1024**3
+        if memory_allocated > self._memory_threshold_gb:
+            logger.warning(
+                f"GPU内存使用过高 ({memory_allocated:.2f}GB > {self._memory_threshold_gb:.2f}GB)，触发清理"
+            )
+            self._evict_lru_model()
+            # 强制垃圾回收
+            torch.cuda.empty_cache()
+
+    def remove(self, key: str) -> bool:
+        """移除指定模型"""
+        with self._lock:
+            if key in self:
+                self._unload_model(key)
+                del self[key]
+                return True
+            return False
+
+    def clear_all(self) -> None:
+        """清空所有模型"""
+        with self._lock:
+            for key in list(self.keys()):
+                self._unload_model(key)
+            self.clear()
+
+    def keys_list(self) -> List[str]:
+        """获取所有模型ID列表"""
+        with self._lock:
+            return list(self.keys())
+
+    def __contains__(self, key: object) -> bool:
+        """检查是否包含指定模型"""
+        with self._lock:
+            return super().__contains__(key)
+
+    def __len__(self) -> int:
+        """获取缓存中的模型数量"""
+        with self._lock:
+            return super().__len__()
 
 
 class ModelConfig:
@@ -57,9 +181,18 @@ class ModelConfig:
 class ModelManager:
     """模型管理器，支持多模型缓存"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        max_loaded_models: int = 3,
+        memory_threshold_gb: float = 6.0,
+    ):
         self._models_config: Dict[str, ModelConfig] = {}
-        self._loaded_engines: Dict[str, BaseASREngine] = {}
+        self._max_loaded_models = max_loaded_models
+        self._memory_threshold_gb = memory_threshold_gb
+        self._loaded_engines = LRUModelCache(
+            capacity=max_loaded_models,
+            memory_threshold_gb=memory_threshold_gb,
+        )
         self._default_model_id: Optional[str] = None
         self._load_models_config()
 
@@ -157,65 +290,67 @@ class ModelManager:
         return models
 
     def get_asr_engine(self, model_id: Optional[str] = None) -> BaseASREngine:
-        """获取ASR引擎，支持缓存"""
+        """获取ASR引擎，支持LRU缓存"""
         if model_id is None:
             model_id = self._default_model_id
 
         if not model_id:
             raise InvalidParameterException("未指定模型且没有默认模型")
 
-        # 如果已经加载，直接返回
-        if model_id in self._loaded_engines:
-            return self._loaded_engines[model_id]
+        # 如果已经加载，LRU缓存会自动将其移到最近使用位置
+        engine = self._loaded_engines.get(model_id)
+        if engine is not None:
+            logger.debug(f"从LRU缓存获取模型: {model_id}")
+            return engine
+
+        # 检查内存使用情况，可能需要触发清理
+        self._check_memory_and_evict_if_needed()
 
         # 加载新模型
+        logger.info(f"加载新模型到LRU缓存: {model_id}")
         config = self.get_model_config(model_id)
         engine = self._create_engine(config)
 
-        # 缓存引擎
-        self._loaded_engines[model_id] = engine
+        # 使用LRU缓存存储引擎
+        self._loaded_engines.put(model_id, engine)
 
         return engine
 
-    def _create_engine(self, config: ModelConfig) -> BaseASREngine:
-        """根据配置创建ASR引擎"""
-        engine_type = config.engine.lower()
+    def _check_memory_and_evict_if_needed(self) -> None:
+        """检查GPU内存使用，如果超过阈值则清理最久未使用的模型"""
+        if not torch.cuda.is_available():
+            return
 
-        if engine_type == "funasr":
-            return FunASREngine(
-                offline_model_path=config.offline_model_path,
-                realtime_model_path=config.realtime_model_path,
-                device=settings.DEVICE,
-                vad_model=settings.VAD_MODEL,
-                punc_model=settings.PUNC_MODEL,
-                punc_realtime_model=settings.PUNC_REALTIME_MODEL,
-                extra_model_kwargs=config.extra_kwargs,
+        memory_allocated = torch.cuda.memory_allocated() / 1024**3
+        if memory_allocated > self._memory_threshold_gb:
+            logger.warning(
+                f"GPU内存使用过高 ({memory_allocated:.2f}GB > {self._memory_threshold_gb:.2f}GB)，"
+                f"触发LRU清理"
             )
-        elif engine_type == "qwen3":
-            from .qwen3_engine import Qwen3ASREngine
-            return Qwen3ASREngine(
-                model_path=config.offline_model_path,
-                device=settings.DEVICE,
-                **config.extra_kwargs
+            # LRU缓存会自动处理淘汰
+            self._loaded_engines._check_memory_and_evict_if_needed()
+
+    def _create_engine(self, config: ModelConfig) -> BaseASREngine:
+        """创建ASR引擎实例"""
+        engine_type = config.engine.lower()
+        factory = _ENGINE_REGISTRY.get(engine_type)
+        if not factory:
+            raise InvalidParameterException(
+                f"不支持的引擎类型: {config.engine}"
             )
-        else:
-            raise InvalidParameterException(f"不支持的引擎类型: {config.engine}")
+        return factory(config)
 
     def unload_model(self, model_id: str) -> bool:
         """卸载指定模型"""
-        if model_id in self._loaded_engines:
-            del self._loaded_engines[model_id]
-            # 强制垃圾回收
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            return True
-        return False
+        return self._loaded_engines.remove(model_id)
 
     def get_memory_usage(self) -> Dict[str, Any]:
         """获取内存使用情况"""
         memory_info = {
-            "model_list": list(self._loaded_engines.keys()),
+            "model_list": self._loaded_engines.keys_list(),
             "loaded_count": len(self._loaded_engines),
+            "max_loaded_models": self._max_loaded_models,
+            "memory_threshold_gb": self._memory_threshold_gb,
             "asr_model_mode": settings.ASR_MODEL_MODE,
         }
 
@@ -230,7 +365,7 @@ class ModelManager:
 
     def clear_cache(self) -> None:
         """清空模型缓存"""
-        self._loaded_engines.clear()
+        self._loaded_engines.clear_all()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -263,11 +398,40 @@ class ModelManager:
 
 # 全局模型管理器实例
 _model_manager: Optional[ModelManager] = None
+_model_manager_lock = threading.Lock()
 
 
 def get_model_manager() -> ModelManager:
-    """获取全局模型管理器实例"""
+    """获取全局模型管理器实例（线程安全）"""
     global _model_manager
     if _model_manager is None:
-        _model_manager = ModelManager()
+        with _model_manager_lock:
+            if _model_manager is None:
+                _model_manager = ModelManager(
+                    max_loaded_models=settings.MAX_LOADED_MODELS,
+                    memory_threshold_gb=settings.GPU_MEMORY_THRESHOLD_GB,
+                )
     return _model_manager
+
+
+# 注册内置引擎
+def _register_builtin_engines():
+    """注册内置的ASR引擎"""
+    # 导入引擎模块并注册
+    try:
+        from .engines import FunASREngine  # noqa: F401
+        from .engines.funasr import _register_funasr_engine
+        _register_funasr_engine(register_engine, ModelConfig)
+    except ImportError as e:
+        logger.warning(f"FunASR引擎不可用: {e}")
+
+    try:
+        from .qwen3_engine import Qwen3ASREngine  # noqa: F401
+        from .qwen3_engine import _register_qwen3_engine
+        _register_qwen3_engine(register_engine, ModelConfig)
+    except ImportError as e:
+        logger.warning(f"Qwen3引擎不可用: {e}")
+
+
+# 模块加载时自动注册内置引擎
+_register_builtin_engines()
