@@ -4,16 +4,53 @@
 为ASR API提供一致的参数验证逻辑
 """
 
-from typing import Optional
+import json
+from pathlib import Path
+from typing import Optional, List
 from ...core.exceptions import InvalidParameterException
 from ...models.common import SampleRate, AudioFormat
+from ...core.config import settings
+
+
+def _load_supported_models() -> List[str]:
+    """从 models.json 加载支持的模型列表"""
+    try:
+        models_file = Path(settings.ASR_MODELS_CONFIG)
+        if models_file.exists():
+            with open(models_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            return list(config.get("models", {}).keys())
+    except Exception:
+        pass
+    # Fallback: 如果加载失败，返回默认列表
+    return ["qwen3-asr-1.7b", "paraformer-large"]
+
+
+def _get_default_model() -> str:
+    """从 models.json 获取默认模型"""
+    try:
+        models_file = Path(settings.ASR_MODELS_CONFIG)
+        if models_file.exists():
+            with open(models_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            models = config.get("models", {})
+            # 找到标记为 default 的模型
+            for model_id, model_config in models.items():
+                if model_config.get("default", False):
+                    return model_id
+            # 如果没有标记默认的，返回第一个
+            if models:
+                return list(models.keys())[0]
+    except Exception:
+        pass
+    return "qwen3-asr-1.7b"
 
 
 class AudioParamsValidator:
     """音频参数验证器 - 统一验证ASR相关参数"""
 
-    # 支持的模型ID
-    SUPPORTED_MODELS = ["qwen3-asr-1.7b", "paraformer-large"]
+    # 支持的模型ID（动态加载）
+    SUPPORTED_MODELS = _load_supported_models()
 
     # 支持的音频格式
     SUPPORTED_FORMATS = AudioFormat.get_enums()
@@ -35,12 +72,15 @@ class AudioParamsValidator:
         Raises:
             InvalidParameterException: 当模型ID不支持时
         """
-        if not model_id:
-            return "qwen3-asr-1.7b"  # 默认模型
+        # 动态获取最新支持的模型列表（避免类变量缓存问题）
+        supported_models = _load_supported_models()
 
-        if model_id not in AudioParamsValidator.SUPPORTED_MODELS:
+        if not model_id:
+            return _get_default_model()
+
+        if model_id not in supported_models:
             raise InvalidParameterException(
-                f"不支持的模型ID: {model_id}。支持的模型: {', '.join(AudioParamsValidator.SUPPORTED_MODELS)}"
+                f"不支持的模型ID: {model_id}。支持的模型: {', '.join(supported_models)}"
             )
 
         return model_id
