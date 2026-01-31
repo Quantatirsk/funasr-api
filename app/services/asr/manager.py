@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 ASR模型管理器
-支持多模型缓存和动态加载
-重构以支持离线和实时模型的分离管理
+预加载所有模型，无LRU淘汰机制
 """
 
 import json
 import threading
 import logging
-from collections import OrderedDict
 import torch
 from typing import Dict, Any, Optional, List
 from pathlib import Path
@@ -35,105 +33,50 @@ def get_registered_engine_types() -> List[str]:
     return list(_ENGINE_REGISTRY.keys())
 
 
-class LRUModelCache(OrderedDict):
-    """LRU模型缓存，基于GPU内存阈值自动清理（无容量限制）"""
+class ModelCache:
+    """简单模型缓存，无淘汰机制"""
 
-    def __init__(self, capacity: int = 3, memory_threshold_gb: float = 6.0):
-        super().__init__()
-        self._capacity = capacity
-        self._memory_threshold_gb = memory_threshold_gb
+    def __init__(self):
+        self._cache: Dict[str, BaseASREngine] = {}
         self._lock = threading.RLock()
-        self._unload_callback: Optional[Callable[[str], None]] = None
 
-    def set_unload_callback(self, callback: Callable[[str], None]):
-        """设置模型卸载回调函数"""
-        self._unload_callback = callback
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """获取模型，并将其移到最近使用的位置"""
+    def get(self, key: str) -> Optional[BaseASREngine]:
+        """获取模型"""
         with self._lock:
-            if key in self:
-                self.move_to_end(key)
-                return self[key]
-            return default
+            return self._cache.get(key)
 
     def put(self, key: str, value: BaseASREngine) -> None:
-        """添加或更新模型"""
+        """添加模型"""
         with self._lock:
-            if key in self:
-                self.move_to_end(key)
-                self[key] = value
-            else:
-                # 检查内存并清理（仅基于GPU内存阈值，不限制模型数量）
-                self._check_memory_and_evict_if_needed()
-                self[key] = value
-
-    def _evict_lru_model(self) -> None:
-        """淘汰最久未使用的模型"""
-        if not self:
-            return
-        oldest_key = next(iter(self))
-        logger.info(f"LRU缓存淘汰模型: {oldest_key}")
-        self._unload_model(oldest_key)
-        del self[oldest_key]
-
-    def _unload_model(self, model_id: str) -> None:
-        """卸载模型并清理显存"""
-        if model_id not in self:
-            return
-        engine = self[model_id]
-        try:
-            # 调用引擎的清理方法（如果存在）
-            if hasattr(engine, 'cleanup') and callable(engine.cleanup):
-                engine.cleanup()
-            logger.info(f"模型 {model_id} 已卸载")
-        except Exception as e:
-            logger.warning(f"卸载模型 {model_id} 时出错: {e}")
-
-    def _check_memory_and_evict_if_needed(self) -> None:
-        """检查GPU内存使用，如果超过阈值则清理"""
-        if not torch.cuda.is_available():
-            return
-
-        memory_allocated = torch.cuda.memory_allocated() / 1024**3
-        if memory_allocated > self._memory_threshold_gb:
-            logger.warning(
-                f"GPU内存使用过高 ({memory_allocated:.2f}GB > {self._memory_threshold_gb:.2f}GB)，触发清理"
-            )
-            self._evict_lru_model()
-            # 强制垃圾回收
-            torch.cuda.empty_cache()
+            self._cache[key] = value
 
     def remove(self, key: str) -> bool:
         """移除指定模型"""
         with self._lock:
-            if key in self:
-                self._unload_model(key)
-                del self[key]
+            if key in self._cache:
+                del self._cache[key]
                 return True
             return False
 
     def clear_all(self) -> None:
         """清空所有模型"""
         with self._lock:
-            for key in list(self.keys()):
-                self._unload_model(key)
-            self.clear()
+            self._cache.clear()
 
     def keys_list(self) -> List[str]:
         """获取所有模型ID列表"""
         with self._lock:
-            return list(self.keys())
+            return list(self._cache.keys())
 
     def __contains__(self, key: object) -> bool:
         """检查是否包含指定模型"""
         with self._lock:
-            return super().__contains__(key)
+            return key in self._cache
 
     def __len__(self) -> int:
         """获取缓存中的模型数量"""
         with self._lock:
-            return super().__len__()
+            return len(self._cache)
 
 
 class ModelConfig:
@@ -176,20 +119,11 @@ class ModelConfig:
 
 
 class ModelManager:
-    """模型管理器，支持多模型缓存（无模型数量限制，仅受GPU内存阈值约束）"""
+    """模型管理器，预加载所有模型，无淘汰机制"""
 
-    def __init__(
-        self,
-        max_loaded_models: int = 3,
-        memory_threshold_gb: float = 6.0,
-    ):
+    def __init__(self):
         self._models_config: Dict[str, ModelConfig] = {}
-        self._max_loaded_models = max_loaded_models
-        self._memory_threshold_gb = memory_threshold_gb
-        self._loaded_engines = LRUModelCache(
-            capacity=max_loaded_models,  # 保留参数但不再作为硬限制
-            memory_threshold_gb=memory_threshold_gb,
-        )
+        self._loaded_engines = ModelCache()
         self._default_model_id: Optional[str] = None
         self._load_models_config()
 
@@ -287,45 +221,28 @@ class ModelManager:
         return models
 
     def get_asr_engine(self, model_id: Optional[str] = None) -> BaseASREngine:
-        """获取ASR引擎，支持LRU缓存"""
+        """获取ASR引擎"""
         if model_id is None:
             model_id = self._default_model_id
 
         if not model_id:
             raise InvalidParameterException("未指定模型且没有默认模型")
 
-        # 如果已经加载，LRU缓存会自动将其移到最近使用位置
+        # 检查是否已加载
         engine = self._loaded_engines.get(model_id)
         if engine is not None:
-            logger.debug(f"从LRU缓存获取模型: {model_id}")
+            logger.debug(f"从缓存获取模型: {model_id}")
             return engine
 
-        # 检查内存使用情况，可能需要触发清理
-        self._check_memory_and_evict_if_needed()
-
         # 加载新模型
-        logger.info(f"加载新模型到LRU缓存: {model_id}")
+        logger.info(f"加载模型: {model_id}")
         config = self.get_model_config(model_id)
         engine = self._create_engine(config)
 
-        # 使用LRU缓存存储引擎
+        # 缓存引擎
         self._loaded_engines.put(model_id, engine)
 
         return engine
-
-    def _check_memory_and_evict_if_needed(self) -> None:
-        """检查GPU内存使用，如果超过阈值则清理最久未使用的模型"""
-        if not torch.cuda.is_available():
-            return
-
-        memory_allocated = torch.cuda.memory_allocated() / 1024**3
-        if memory_allocated > self._memory_threshold_gb:
-            logger.warning(
-                f"GPU内存使用过高 ({memory_allocated:.2f}GB > {self._memory_threshold_gb:.2f}GB)，"
-                f"触发LRU清理"
-            )
-            # LRU缓存会自动处理淘汰
-            self._loaded_engines._check_memory_and_evict_if_needed()
 
     def _create_engine(self, config: ModelConfig) -> BaseASREngine:
         """创建ASR引擎实例"""
@@ -346,8 +263,6 @@ class ModelManager:
         memory_info = {
             "model_list": self._loaded_engines.keys_list(),
             "loaded_count": len(self._loaded_engines),
-            "max_loaded_models": self._max_loaded_models,
-            "memory_threshold_gb": self._memory_threshold_gb,
             "asr_model_mode": settings.ASR_MODEL_MODE,
         }
 
@@ -447,10 +362,7 @@ def get_model_manager() -> ModelManager:
     if _model_manager is None:
         with _model_manager_lock:
             if _model_manager is None:
-                _model_manager = ModelManager(
-                    max_loaded_models=settings.MAX_LOADED_MODELS,
-                    memory_threshold_gb=settings.GPU_MEMORY_THRESHOLD_GB,
-                )
+                _model_manager = ModelManager()
     return _model_manager
 
 

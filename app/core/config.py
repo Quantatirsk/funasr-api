@@ -42,8 +42,6 @@ class Settings:
     LOG_BACKUP_COUNT: int = 50  # 保留50个备份文件
 
     # ASR模型配置
-    MAX_LOADED_MODELS: int = 3  # 最大同时加载的模型数量（LRU缓存容量）
-    GPU_MEMORY_THRESHOLD_GB: float = 6.0  # GPU内存使用阈值，超过则触发清理
     WS_MAX_BUFFER_SIZE: int = 10 * 16000  # WebSocket音频缓冲区最大大小（10秒@16kHz）
 
     FUNASR_AUTOMODEL_KWARGS = {
@@ -121,13 +119,7 @@ class Settings:
             "AUTO_LOAD_CUSTOM_ASR_MODELS", self.AUTO_LOAD_CUSTOM_ASR_MODELS
         )
 
-        # LRU缓存和内存配置
-        self.MAX_LOADED_MODELS = int(
-            os.getenv("MAX_LOADED_MODELS", str(self.MAX_LOADED_MODELS))
-        )
-        self.GPU_MEMORY_THRESHOLD_GB = float(
-            os.getenv("GPU_MEMORY_THRESHOLD_GB", str(self.GPU_MEMORY_THRESHOLD_GB))
-        )
+        # WebSocket缓冲区配置
         self.WS_MAX_BUFFER_SIZE = int(
             os.getenv("WS_MAX_BUFFER_SIZE", str(self.WS_MAX_BUFFER_SIZE))
         )
