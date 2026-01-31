@@ -7,7 +7,7 @@
 
 import os
 
-# 强制使用统一的模型缓存路径，避免 MODELSCOPE_CACHE 环境变量干扰
+# 强制使用统一的模型缓存路径
 # 标准路径: ~/.cache/modelscope/hub/models/{model_id}/
 MODELSCOPE_BASE_PATH = os.path.expanduser("~/.cache/modelscope")
 
