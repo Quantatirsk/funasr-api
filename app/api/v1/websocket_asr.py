@@ -125,11 +125,17 @@ class Qwen3WebSocketASRService:
         if self.engine is None:
             model_manager = get_model_manager()
 
-            # 强制使用 qwen3-asr-1.7b 模型，并获取流式专用实例
+            # 使用默认 Qwen3-ASR 模型，并获取流式专用实例
             try:
-                asr_engine = model_manager.get_asr_engine("qwen3-asr-1.7b", streaming=True)
-            except Exception as e:
-                raise Exception(f"无法加载 Qwen3-ASR 流式引擎: {e}")
+                from app.core.config import settings
+                default_model = model_manager._default_model_id
+                # 如果默认模型是 qwen3-asr-0.6b 或 qwen3-asr-1.7b，使用它；否则尝试 1.7b
+                if default_model in ["qwen3-asr-0.6b", "qwen3-asr-1.7b"]:
+                    qwen_model = default_model
+                else:
+                    qwen_model = "qwen3-asr-1.7b"
+                logger.info(f"使用 Qwen3-ASR 流式模型: {qwen_model}")
+                asr_engine = model_manager.get_asr_engine(qwen_model, streaming=True)
 
             if not isinstance(asr_engine, Qwen3ASREngine):
                 raise Exception("当前模型不是 Qwen3-ASR，无法使用流式识别")

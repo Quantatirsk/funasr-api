@@ -128,9 +128,21 @@ def preload_models() -> dict:
         all_models = model_manager.list_models()
         model_ids = [m["id"] for m in all_models]
 
-        logger.info(f"📋 发现 {len(model_ids)} 个模型配置: {', '.join(model_ids)}")
+        # 根据配置过滤要加载的模型
+        # 只加载默认模型和显式指定的模型
+        default_model = model_manager._default_model_id
+        models_to_load = [default_model] if default_model in model_ids else []
 
-        for model_id in model_ids:
+        # 如果默认模型是 qwen3-asr-0.6b，跳过 qwen3-asr-1.7b
+        # 如果默认模型是 qwen3-asr-1.7b，加载它（以及可能的 0.6b 用于其他用途）
+
+        # 添加 paraformer-large（如果配置了）
+        if "paraformer-large" in model_ids and settings.ASR_MODEL_MODE in ["all", "offline"]:
+            models_to_load.append("paraformer-large")
+
+        logger.info(f"📋 发现 {len(model_ids)} 个模型配置，将加载 {len(models_to_load)} 个: {', '.join(models_to_load)}")
+
+        for model_id in models_to_load:
             result["asr_models"][model_id] = {"loaded": False, "error": None}
 
             try:
@@ -149,7 +161,8 @@ def preload_models() -> dict:
                     logger.warning(f"⚠️  ASR模型 {model_id} 加载后未正确初始化")
 
                 # 为 Qwen3-ASR 加载流式专用实例（完全隔离状态）
-                if model_id == "qwen3-asr-1.7b":
+                # 根据实际加载的模型决定流式实例
+                if model_id.startswith("qwen3-asr-") and model_id in ["qwen3-asr-1.7b", "qwen3-asr-0.6b"]:
                     streaming_key = f"{model_id}-streaming"
                     result["asr_models"][streaming_key] = {"loaded": False, "error": None}
                     try:
