@@ -2,9 +2,12 @@
 """API v1版本路由"""
 
 from fastapi import APIRouter
-from .asr import router as asr_router
+from .asr import router as asr_router, update_openapi_schema
 from .websocket_asr import router as websocket_asr_router
 from .openai_compatible import router as openai_router
+
+# 更新 ASR 路由的 OpenAPI schema（必须在 include_router 之前调用）
+update_openapi_schema()
 
 api_router = APIRouter()
 

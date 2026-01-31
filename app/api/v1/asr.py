@@ -48,6 +48,74 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stream/v1", tags=["ASR"])
 
 
+def _get_model_schema() -> dict:
+    """从 models.json 获取动态的模型 schema"""
+    try:
+        import json
+        from pathlib import Path
+
+        models_file = Path(settings.ASR_MODELS_CONFIG)
+        if models_file.exists():
+            with open(models_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            models = config.get("models", {})
+            model_ids = list(models.keys())
+
+            # 找到默认模型
+            default_model = None
+            for model_id, model_config in models.items():
+                if model_config.get("default", False):
+                    default_model = model_id
+                    break
+
+            # 如果没有标记默认的，使用第一个
+            if not default_model and model_ids:
+                default_model = model_ids[0]
+
+            return {
+                "type": "string",
+                "maxLength": 64,
+                "default": default_model or "qwen3-asr-1.7b",
+                "enum": model_ids,
+                "example": default_model or "qwen3-asr-1.7b",
+            }
+    except Exception as e:
+        logger.warning(f"Failed to load model schema from config: {e}")
+
+    # Fallback: 使用硬编码的默认值
+    return {
+        "type": "string",
+        "maxLength": 64,
+        "default": "qwen3-asr-1.7b",
+        "enum": ["qwen3-asr-1.7b", "paraformer-large"],
+        "example": "qwen3-asr-1.7b",
+    }
+
+
+def update_openapi_schema():
+    """在应用启动时更新 OpenAPI schema，使其包含正确的模型列表"""
+    model_schema = _get_model_schema()
+    default_model = model_schema.get("default", "qwen3-asr-1.7b")
+
+    # 找到 asr_transcribe 路由并更新其 openapi_extra
+    for route in router.routes:
+        if hasattr(route, "endpoint") and route.endpoint.__name__ == "asr_transcribe":
+            if hasattr(route, "openapi_extra") and route.openapi_extra:
+                params = route.openapi_extra.get("parameters", [])
+                for param in params:
+                    if param.get("name") == "model_id":
+                        param["schema"] = model_schema
+                        param["description"] = f"ASR 模型 ID。可选值：{', '.join(model_schema['enum'])}（默认：{default_model}）"
+                # 同时更新 description 中的模型说明
+                if hasattr(route, "description"):
+                    route.description = route.description.replace(
+                        "- **qwen3-asr-1.7b**（默认）",
+                        f"- **{default_model}**（默认）"
+                    )
+            break
+
+
 async def get_asr_params(request: Request) -> ASRQueryParams:
     """从请求中提取并验证ASR参数"""
     # 从URL查询参数中获取
