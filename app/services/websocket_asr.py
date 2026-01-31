@@ -96,13 +96,8 @@ class AliyunWebSocketASRService:
             try:
                 self.asr_engine = model_manager.get_asr_engine("paraformer-large")
                 logger.info("WebSocket ASR引擎: 使用 paraformer-large")
-            except Exception:
-                # 回退到 fun-asr-nano
-                try:
-                    self.asr_engine = model_manager.get_asr_engine("fun-asr-nano")
-                    logger.info("WebSocket ASR引擎: 使用 fun-asr-nano")
-                except Exception as e2:
-                    raise Exception(f"无法加载FunASR引擎: {e2}")
+            except Exception as e2:
+                raise Exception(f"无法加载FunASR引擎: {e2}")
 
             if not self.asr_engine.supports_realtime:
                 raise Exception("当前ASR引擎不支持实时识别")

@@ -106,7 +106,6 @@ for seg in result.segments:
 |------|--------|---------|----------|
 | qwen3-asr-1.7b ⭐ | 1.7B | ~8GB | **默认模型**，最佳准确率，52种语言 |
 | paraformer-large | 220M | ~2GB | 高精度中文 |
-| fun-asr-nano | - | ~4GB | 多语言+方言 |
 
 ## 注意事项
 

@@ -58,7 +58,6 @@ funasr-api/
 ├── models/                    # 模型文件目录（挂载到容器）
 │   ├── hub/                   # ModelScope 模型缓存
 │   │   ├── iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch/
-│   │   ├── FunAudioLLM/Fun-ASR-Nano-2512/
 │   │   └── ...
 │   └── models/                # 备用缓存路径
 ├── temp/                      # 临时文件
@@ -118,7 +117,6 @@ volumes:
 | Qwen3-ASR-1.7B | 离线 ASR（默认，52种语言+字级时间戳） | ~4GB |
 | Paraformer Large (VAD+PUNC) | 高精度中文 ASR | ~2GB |
 | Paraformer Large Online | 实时 ASR | ~2GB |
-| Fun-ASR-Nano | 多语言+方言 ASR | ~1GB |
 | FSMN VAD | 语音活动检测 | ~50MB |
 | CAM++ | 说话人分离 | ~500MB |
 | CT-Transformer | 标点符号 | ~500MB |
@@ -152,7 +150,6 @@ python scripts/download_models.py
 ```python
 models = [
     # ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large"),
-    ("FunAudioLLM/Fun-ASR-Nano-2512", "Fun-ASR-Nano"),  # 只下载这个
 ]
 ```
 

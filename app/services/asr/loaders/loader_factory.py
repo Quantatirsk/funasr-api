@@ -9,7 +9,6 @@ from typing import Dict, Optional, Type
 
 from .base_loader import BaseModelLoader
 from .paraformer_loader import ParaformerModelLoader
-from .funasrnano_loader import FunASRNanoModelLoader
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class ModelLoaderFactory:
     # 模型类型到加载器的映射
     _LOADER_REGISTRY: Dict[str, Type[BaseModelLoader]] = {
         "paraformer": ParaformerModelLoader,
-        "fun-asr-nano": FunASRNanoModelLoader,
     }
 
     @classmethod
@@ -78,15 +76,6 @@ class ModelLoaderFactory:
 
         根据模型路径和额外参数识别模型类型
         """
-        # 检查是否是 Fun-ASR-Nano
-        if "fun-asr-nano" in model_path.lower() or "Fun-ASR-Nano" in model_path:
-            return "fun-asr-nano"
-
-        # 检查是否使用了 trust_remote_code（通常是端到端模型）
-        if extra_kwargs.get("trust_remote_code"):
-            # 可以进一步扩展识别其他远程代码模型
-            return "fun-asr-nano"
-
         # 默认使用传统 Paraformer 模型
         return "paraformer"
 

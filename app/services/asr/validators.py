@@ -13,7 +13,7 @@ class AudioParamsValidator:
     """音频参数验证器 - 统一验证ASR相关参数"""
 
     # 支持的模型ID
-    SUPPORTED_MODELS = ["qwen3-asr-1.7b", "paraformer-large", "fun-asr-nano"]
+    SUPPORTED_MODELS = ["qwen3-asr-1.7b", "paraformer-large"]
 
     # 支持的音频格式
     SUPPORTED_FORMATS = AudioFormat.get_enums()

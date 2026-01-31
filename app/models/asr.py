@@ -203,7 +203,7 @@ class ASRHealthCheckResponse(HealthCheckResponse):
                 "device": "cuda:0",
                 "version": "1.0.0",
                 "message": "ASR service is running normally",
-                "loaded_models": ["paraformer-large", "fun-asr-nano"],
+                "loaded_models": ["paraformer-large"],
                 "memory_usage": {
                     "gpu_memory_used": "2.1GB",
                     "gpu_memory_total": "8.0GB",

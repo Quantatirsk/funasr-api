@@ -14,28 +14,6 @@
                 "realtime": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online"
             }
         },
-        "fun-asr-nano": {
-            "name": "Fun-ASR-Nano",
-            "engine": "funasr",
-            "description": "轻量级多语言ASR，支持31种语言、7大中文方言、26种口音，远场高噪声识别优化",
-            "languages": [
-                "zh",
-                "en",
-                "ja",
-                "ko",
-                "yue",
-                "wuu",
-                "nan",
-                "hak"
-            ],
-            "supports_realtime": false,
-            "models": {
-                "offline": "FunAudioLLM/Fun-ASR-Nano-2512"
-            },
-            "extra_kwargs": {
-                "trust_remote_code": true
-            }
-        },
         "qwen3-asr-1.7b": {
             "name": "Qwen3-ASR-1.7B",
             "engine": "qwen3",

@@ -6,12 +6,10 @@
 
 from .base_loader import BaseModelLoader
 from .paraformer_loader import ParaformerModelLoader
-from .funasrnano_loader import FunASRNanoModelLoader
 from .loader_factory import ModelLoaderFactory
 
 __all__ = [
     "BaseModelLoader",
     "ParaformerModelLoader",
-    "FunASRNanoModelLoader",
     "ModelLoaderFactory",
 ]

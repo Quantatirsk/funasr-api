@@ -108,7 +108,6 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 ## 可用模型
 - **qwen3-asr-1.7b**（默认）：Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能
 - **paraformer-large**：高精度中文语音识别，内置VAD+标点
-- **fun-asr-nano**：轻量级多语言ASR，支持31种语言、7大中文方言
 
 ## 音频输入方式
 1. **请求体上传**：将音频二进制数据作为请求体发送
@@ -129,10 +128,10 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                     "type": "string",
                     "maxLength": 64,
                     "default": "qwen3-asr-1.7b",
-                    "enum": ["qwen3-asr-1.7b", "paraformer-large", "fun-asr-nano"],
+                    "enum": ["qwen3-asr-1.7b", "paraformer-large"],
                     "example": "qwen3-asr-1.7b",
                 },
-                "description": "ASR 模型 ID。可选值：qwen3-asr-1.7b（默认，高性能52语言）、paraformer-large（高精度中文）、fun-asr-nano（多语言+方言）",
+                "description": "ASR 模型 ID。可选值：qwen3-asr-1.7b（默认，高性能52语言）、paraformer-large（高精度中文）",
             },
             # 2. 输入源
             {
@@ -446,7 +445,6 @@ async def health_check(request: Request):
 |---------|------|------|----------|
 | qwen3-asr-1.7b | Qwen3-ASR 1.7B | 高性能多语言语音识别，vLLM后端，52种语言+方言 | ✅ |
 | paraformer-large | Paraformer Large | 高精度中文语音识别 | ✅ |
-| fun-asr-nano | Fun-ASR-Nano | 轻量级多语言ASR，支持31种语言和方言 | ❌ |
 
 ## 返回信息
 - **models**: 模型详细信息列表

@@ -55,7 +55,7 @@ class Settings:
     ASR_MODEL_MODE: str = "all"  # ASR模型加载模式: realtime, offline, all
     ASR_ENABLE_REALTIME_PUNC: bool = True  # 是否启用实时标点模型（用于中间结果展示）
     AUTO_LOAD_CUSTOM_ASR_MODELS: str = (
-        ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: fun-asr-nano）
+        ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: paraformer-large）
     )
     VAD_MODEL: str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
     PUNC_MODEL: str = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"

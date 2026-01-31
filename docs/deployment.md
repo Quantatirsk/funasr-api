@@ -102,7 +102,6 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 | Qwen3-ASR-1.7B ⭐ | 多语言 ASR（默认，52种语言+方言，字级时间戳） |
 | Paraformer Large (VAD+PUNC) | 高精度中文 ASR |
 | Paraformer Large Online | 实时流式 ASR |
-| Fun-ASR-Nano | 多语言+方言 ASR |
 | VAD Model | 语音活动检测 |
 | CAM++ | 说话人分离 |
 | Punctuation Model | 标点预测（离线） |
@@ -133,7 +132,7 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `ASR_MODEL_MODE` | `all` | 模型加载模式：`offline`, `realtime`, `all` |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型（如 `fun-asr-nano`） |
+| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型 |
 | `ASR_ENABLE_REALTIME_PUNC` | `true` | 是否启用实时标点模型 |
 
 **模式说明：**

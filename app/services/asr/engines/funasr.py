@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 FunASR语音识别引擎模块
-支持多种ASR模型架构（Paraformer、Fun-ASR-Nano等）
+支持 Paraformer ASR模型架构
 """
 
 import time
@@ -169,9 +169,8 @@ class FunASREngine(RealTimeASREngine):
     ) -> str:
         """使用FunASR转录音频文件
 
-        使用模块化加载器处理不同模型类型的推理逻辑：
-        1. Fun-ASR-Nano（端到端 Audio-LLM）：直接调用，不使用外部 VAD/PUNC
-        2. Paraformer（传统模型）：支持动态组合 VAD/PUNC/LM
+        使用加载器处理推理逻辑：
+        - Paraformer（传统模型）：支持动态组合 VAD/PUNC/LM
         """
         _ = sample_rate  # 当前未使用
         if not self.offline_model or not self._offline_loader:
@@ -194,23 +193,16 @@ class FunASREngine(RealTimeASREngine):
                 language=language,
             )
 
-            # 根据加载器特性决定如何处理 VAD/PUNC
-            if self._offline_loader.supports_external_vad and enable_vad:
-                # 传统模型：使用外部 VAD + PUNC
+            # 使用外部 VAD + PUNC
+            if enable_vad:
                 result = self._transcribe_with_vad(
                     audio_path, generate_kwargs, enable_punctuation
                 )
             else:
-                # 端到端模型：直接推理
-                logger.debug(f"使用 {self._offline_loader.model_type} 进行端到端推理")
                 result = self.offline_model.generate(**generate_kwargs)
 
-                # 对于传统模型，如果没有 VAD 但需要 PUNC，手动添加
-                if (
-                    self._offline_loader.supports_external_punc
-                    and not enable_vad
-                    and enable_punctuation
-                ):
+                # 如果需要 PUNC，手动添加
+                if enable_punctuation:
                     result = self._apply_punc_to_result(result)
 
             # 提取识别结果
@@ -310,16 +302,10 @@ class FunASREngine(RealTimeASREngine):
                 enable_itn=enable_itn,
             )
 
-            # 根据加载器特性决定如何处理
-            if self._offline_loader.supports_external_vad:
-                # 传统模型：使用外部 VAD
-                result = self._transcribe_with_vad(
-                    audio_path, generate_kwargs, enable_punctuation
-                )
-            else:
-                # 端到端模型：直接推理
-                logger.debug(f"使用 {self._offline_loader.model_type} 进行端到端推理")
-                result = self.offline_model.generate(**generate_kwargs)
+            # 使用外部 VAD
+            result = self._transcribe_with_vad(
+                audio_path, generate_kwargs, enable_punctuation
+            )
 
             # 解析结果
             segments: List[ASRSegmentResult] = []
@@ -504,11 +490,6 @@ class FunASREngine(RealTimeASREngine):
             logger.warning("离线模型未加载，使用默认批处理实现")
             return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
 
-        # Fun-ASR-Nano 模型不支持批量推理，直接使用逐个推理
-        if self._offline_loader.model_type == "fun-asr-nano":
-            logger.debug("Fun-ASR-Nano 模型使用逐个推理模式")
-            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
-
         # 过滤有效片段
         valid_segments = [(idx, seg) for idx, seg in enumerate(segments) if seg.temp_file]
         if not valid_segments:
@@ -566,7 +547,7 @@ class FunASREngine(RealTimeASREngine):
                         text = res.get("text", "").strip()
 
                         # 应用PUNC模型（Paraformer需要手动添加标点）
-                        if enable_punctuation and text and self._offline_loader.supports_external_punc:
+                        if enable_punctuation and text:
                             text = self._apply_punc_to_text(text)
 
                         # 应用ITN处理
