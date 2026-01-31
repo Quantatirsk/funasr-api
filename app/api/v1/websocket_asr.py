@@ -235,13 +235,17 @@ class Qwen3WebSocketASRService:
                 })
 
             # 4. 发送段落结束事件
+            # 构建截断前的完整文本
+            confirmed_text = "".join([s["text"] for s in ctx.confirmed_segments])
+            full_text_before_cut = confirmed_text + segment_text
             await websocket.send_json({
                 "type": "segment_end",
                 "task_id": task_id,
                 "segment_index": ctx.segment_index,
                 "reason": reason,
                 "result": {
-                    "text": segment_text,
+                    "text": full_text_before_cut,  # 截断前的完整文本
+                    "segment_text": segment_text,  # 当前段落文本
                     "language": ctx.streaming_state.last_language,
                 },
                 "confirmed_texts": [s["text"] for s in ctx.confirmed_segments],
@@ -440,11 +444,18 @@ class Qwen3WebSocketASRService:
                     ctx.streaming_state,
                 )
 
+                # 构建完整文本：已确认段落 + 当前段落
+                current_text = ctx.streaming_state.last_text or ""
+                confirmed_text = "".join([s["text"] for s in ctx.confirmed_segments])
+                full_text = confirmed_text + current_text
+
                 results.append({
-                    "text": ctx.streaming_state.last_text,
+                    "text": full_text,  # 返回完整累积文本
+                    "current_segment_text": current_text,  # 当前段落原始文本
                     "language": ctx.streaming_state.last_language,
                     "chunk_id": ctx.streaming_state.chunk_count,
                     "is_partial": True,
+                    "segment_index": ctx.segment_index,
                 })
 
             # 发送识别结果
@@ -454,6 +465,7 @@ class Qwen3WebSocketASRService:
                     "task_id": task_id,
                     "results": results,
                     "segment_index": ctx.segment_index,
+                    "confirmed_segments_count": len(ctx.confirmed_segments),
                 })
 
             return len(results) > 0
@@ -528,8 +540,9 @@ class Qwen3WebSocketASRService:
                     "reason": "final",
                 })
 
-            # 构建完整结果文本
+            # 构建完整结果文本（直接拼接，不加空格，适配中文）
             all_texts = [s["text"] for s in ctx.confirmed_segments if s["text"].strip()]
+            full_text = "".join(all_texts)
 
             # 发送最终结果（包含所有段落）
             await websocket.send_json({
@@ -537,7 +550,7 @@ class Qwen3WebSocketASRService:
                 "task_id": task_id,
                 "result": {
                     "text": final_text,  # 最后一段文本
-                    "full_text": " ".join(all_texts),  # 所有段落拼接
+                    "full_text": full_text,  # 所有段落拼接（无空格）
                     "language": ctx.streaming_state.last_language,
                     "total_chunks": ctx.streaming_state.chunk_count,
                     "total_segments": len(ctx.confirmed_segments),
