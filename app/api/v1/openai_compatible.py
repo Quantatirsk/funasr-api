@@ -166,13 +166,14 @@ def map_model_id(model: str) -> Optional[str]:
     "/models",
     response_model=ModelsResponse,
     summary="列出可用模型",
-    description="""返回当前可用的 ASR 模型列表（OpenAI `/v1/models` 兼容）。
+    description=f"""返回当前可用的 ASR 模型列表（OpenAI `/v1/models` 兼容）。
 
 **可用模型：**
 
 | 模型 ID | 说明 |
 |---------|------|
 | `qwen3-asr-1.7b` | Qwen3-ASR 1.7B，52 种语言，vLLM 高性能（默认） |
+| `qwen3-asr-0.6b` | Qwen3-ASR 0.6B，轻量版，适合小显存环境 |
 | `paraformer-large` | 高精度中文 ASR，内置 VAD+标点 |
 
 
@@ -238,6 +239,7 @@ async def list_models(request: Request):
 **模型映射：**
 - `whisper-1` → 使用默认模型 (qwen3-asr-1.7b)
 - `qwen3-asr-1.7b` → Qwen3-ASR 1.7B，52种语言，vLLM高性能
+- `qwen3-asr-0.6b` → Qwen3-ASR 0.6B，轻量版，适合小显存
 - `paraformer-large` → 高精度中文 ASR
 
 **暂不支持的参数：**
@@ -295,8 +297,7 @@ async def create_transcription(
     # 2. 核心参数
     model: str = Form(
         "qwen3-asr-1.7b",
-        description="ASR 模型选择",
-        json_schema_extra={"enum": ["qwen3-asr-1.7b", "paraformer-large"]},
+        description="ASR 模型选择。可用模型通过 /v1/models 端点获取",
     ),
     # 3. 音频属性
     language: Optional[str] = Form(
