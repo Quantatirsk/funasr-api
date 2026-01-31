@@ -50,7 +50,7 @@ class Qwen3ASREngine(BaseASREngine):
         self,
         model_path: str = "Qwen/Qwen3-ASR-1.7B",
         device: str = "auto",
-        gpu_memory_utilization: float = 0.8,
+        gpu_memory_utilization: Optional[float] = None,
         forced_aligner_path: Optional[str] = None,
         max_inference_batch_size: int = 32,
         max_new_tokens: int = 1024,
@@ -63,7 +63,7 @@ class Qwen3ASREngine(BaseASREngine):
         Args:
             model_path: 模型路径或 HuggingFace/ModelScope ID
             device: 推理设备（auto/cuda:0/cpu）
-            gpu_memory_utilization: GPU 显存使用率（0-1）
+            gpu_memory_utilization: GPU 显存使用率（0-1），None表示自动根据模型大小设置
             forced_aligner_path: 时间戳对齐模型路径（可选）
             max_inference_batch_size: 最大批处理大小
             max_new_tokens: 最大生成 token 数
@@ -78,13 +78,16 @@ class Qwen3ASREngine(BaseASREngine):
         self._device = self._detect_device(device)
 
         # 根据模型大小自动设置显存使用率（如果未显式指定）
-        if gpu_memory_utilization == 0.8:  # 默认值
+        if gpu_memory_utilization is None:
             if "0.6B" in model_path:
                 gpu_memory_utilization = 0.4
                 logger.info("检测到 0.6B 模型，自动设置显存使用率为 0.4")
             elif "1.7B" in model_path:
                 gpu_memory_utilization = 0.6
                 logger.info("检测到 1.7B 模型，自动设置显存使用率为 0.6")
+            else:
+                gpu_memory_utilization = 0.6  # 默认
+                logger.info(f"未识别模型大小，默认显存使用率 0.6 (路径: {model_path})")
 
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_inference_batch_size = max_inference_batch_size
@@ -511,10 +514,17 @@ def _register_qwen3_engine(register_func, model_config_cls):
     from app.core.config import settings
 
     def _create_qwen3_engine(config) -> "Qwen3ASREngine":
+        # 分离 extra_kwargs，移除 gpu_memory_utilization 让它自动检测
+        # 除非用户显式在环境变量中强制指定
+        extra_kwargs = dict(config.extra_kwargs)
+        # 删除 gpu_memory_utilization，让引擎根据模型大小自动设置
+        # 如果需要强制指定，可以通过修改代码或添加新的配置方式
+        extra_kwargs.pop("gpu_memory_utilization", None)
+
         return Qwen3ASREngine(
             model_path=config.models.get("offline"),
             device=settings.DEVICE,
-            **config.extra_kwargs
+            **extra_kwargs
         )
 
     register_func("qwen3", _create_qwen3_engine)
