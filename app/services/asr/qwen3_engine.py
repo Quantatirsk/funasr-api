@@ -80,8 +80,8 @@ class Qwen3ASREngine(BaseASREngine):
         # 根据模型大小自动设置显存使用率（如果未显式指定）
         if gpu_memory_utilization is None:
             if "0.6B" in model_path:
-                gpu_memory_utilization = 0.4
-                logger.info("检测到 0.6B 模型，自动设置显存使用率为 0.4")
+                gpu_memory_utilization = 0.3
+                logger.info("检测到 0.6B 模型，自动设置显存使用率为 0.3")
             elif "1.7B" in model_path:
                 gpu_memory_utilization = 0.6
                 logger.info("检测到 1.7B 模型，自动设置显存使用率为 0.6")
