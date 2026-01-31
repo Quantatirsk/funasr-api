@@ -34,7 +34,7 @@ MODELSCOPE_MODELS = [
 ]
 
 # === Qwen3-ASR 模型选择 ===
-# auto = 检测显存自动选择 (<24G用0.6B, >=24G用1.7B)
+# auto = 检测显存自动选择 (<48G用0.6B, >=48G用1.7B)
 # Qwen3-ASR-1.7B = 强制使用 1.7B
 # Qwen3-ASR-0.6B = 强制使用 0.6B
 QWEN_ASR_MODEL = os.getenv("QWEN_ASR_MODEL", "auto")
@@ -61,14 +61,14 @@ def _get_qwen_model_to_download() -> list[tuple[str, str]]:
 
             if torch.cuda.is_available():
                 total_vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                if total_vram >= 24:
-                    print(f"检测到显存 {total_vram:.1f}GB >= 24GB，加载 Qwen3-ASR-1.7B")
+                if total_vram >= 48:
+                    print(f"检测到显存 {total_vram:.1f}GB >= 48GB，加载 Qwen3-ASR-1.7B")
                     return [
                         ("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B (vLLM 后端，自动选择)"),
                         ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
                     ]
                 else:
-                    print(f"检测到显存 {total_vram:.1f}GB < 24GB，加载 Qwen3-ASR-0.6B")
+                    print(f"检测到显存 {total_vram:.1f}GB < 48GB，加载 Qwen3-ASR-0.6B")
                     return [
                         ("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B (vLLM 后端，轻量版，自动选择)"),
                         ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner 0.6B (时间戳对齐)"),
