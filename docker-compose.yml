@@ -36,6 +36,8 @@ services:
       - DEVICE=cuda:0
       # Qwen3-ASR 模型选择: auto (自动检测显存), Qwen3-ASR-1.7B, Qwen3-ASR-0.6B
       # - QWEN_ASR_MODEL=auto
+      # 流式 VLLM 实例控制: false (默认，只加载非流式，节省显存), true (同时加载流式实例)
+      # - ENABLE_STREAMING_VLLM=false
       - NVIDIA_VISIBLE_DEVICES=0
       # 多进程会复制模型、显存成倍增加；离线长音频建议保持 1
       - WORKERS=1
