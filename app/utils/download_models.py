@@ -54,14 +54,15 @@ def _get_qwen_models() -> list[tuple[str, str]]:
 
 
 # === ModelScope 模型 (Paraformer) ===
+# 注意：仅列出代码中实际使用的模型，避免重复下载
+# 同一模型的不同命名（如 iic/ vs damo/）只保留实际使用的版本
 MODELSCOPE_MODELS = [
     ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large"),
     ("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online", "Paraformer Online"),
+    # VAD 模型: config.py 中使用的是 iic/ 版本
     ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD"),
-    ("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD (damo)"),
+    # CAM++ 说话人分离: speaker_diarizer.py 中使用的是 iic/speech_campplus_speaker-diarization_common
     ("iic/speech_campplus_speaker-diarization_common", "CAM++"),
-    ("damo/speech_campplus_sv_zh-cn_16k-common", "CAM++ SV"),
-    ("damo/speech_campplus-transformer_scl_zh-cn_16k-common", "CAM++ Transformer"),
     ("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", "标点模型"),
     ("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727", "标点模型(实时)"),
     ("iic/speech_ngram_lm_zh-cn-ai-wesp-fst", "N-gram LM"),
