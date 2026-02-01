@@ -196,7 +196,7 @@ def _get_openai_model_description() -> str:
 **兼容性说明：**
 - `whisper-1` 等 OpenAI 模型 ID 会自动映射到默认模型
 - 支持 OpenAI SDK 和第三方客户端调用
-- 当前默认模型根据显存自动选择：<48GB 用 0.6b，>=48GB 用 1.7b
+- 当前默认模型根据显存自动选择：<32GB 用 0.6b，>=32GB 用 1.7b
 """
 
 

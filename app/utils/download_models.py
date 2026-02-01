@@ -39,11 +39,11 @@ def _get_qwen_models() -> list[tuple[str, str]]:
         import torch
         if torch.cuda.is_available():
             vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            if vram >= 48:
-                print(f"显存 {vram:.1f}GB >= 48GB，加载 Qwen3-ASR-1.7B")
+            if vram >= 32:
+                print(f"显存 {vram:.1f}GB >= 32GB，加载 Qwen3-ASR-1.7B")
                 return [("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
             else:
-                print(f"显存 {vram:.1f}GB < 48GB，加载 Qwen3-ASR-0.6B")
+                print(f"显存 {vram:.1f}GB < 32GB，加载 Qwen3-ASR-0.6B")
                 return [("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
         else:
             print("无 CUDA，下载 Qwen3-ASR-0.6B")

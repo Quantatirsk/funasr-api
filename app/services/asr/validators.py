@@ -15,7 +15,7 @@ from ...core.config import settings
 def _detect_qwen_model_by_vram() -> str:
     """根据显存检测应该使用哪个 Qwen 模型
 
-    < 48GB 用 0.6b, >= 48GB 用 1.7b
+    < 32GB 用 0.6b, >= 32GB 用 1.7b
     """
     try:
         import torch
@@ -30,7 +30,7 @@ def _detect_qwen_model_by_vram() -> str:
             vram = torch.cuda.get_device_properties(i).total_memory / (1024**3)
             min_vram = min(min_vram, vram)
 
-        if min_vram >= 48:
+        if min_vram >= 32:
             return "qwen3-asr-1.7b"
         else:
             return "qwen3-asr-0.6b"
