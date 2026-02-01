@@ -224,9 +224,13 @@ class Qwen3WebSocketASRService:
                 ctx.streaming_state,
             )
 
-            # 3. 保存已确认文本
+            # 3. 保存已确认文本（过滤掉太短的语气词，如"嗯"、"啊"等）
             segment_text = ctx.streaming_state.last_text or ""
-            if segment_text.strip():
+            MIN_SEGMENT_LENGTH = 3  # 最小段落长度（字符数）
+
+            is_valid_segment = len(segment_text.strip()) >= MIN_SEGMENT_LENGTH
+
+            if is_valid_segment:
                 ctx.confirmed_segments.append({
                     "index": ctx.segment_index,
                     "text": segment_text,
@@ -234,46 +238,64 @@ class Qwen3WebSocketASRService:
                     "reason": reason,
                 })
 
-            # 4. 发送段落结束事件
-            # 构建截断前的完整文本（段落之间用换行符分隔）
-            confirmed_text = "\n".join([s["text"] for s in ctx.confirmed_segments])
-            full_text_before_cut = confirmed_text + "\n" + segment_text if confirmed_text else segment_text
-            await websocket.send_json({
-                "type": "segment_end",
-                "task_id": task_id,
-                "segment_index": ctx.segment_index,
-                "reason": reason,
-                "result": {
-                    "text": full_text_before_cut,  # 截断前的完整文本
-                    "segment_text": segment_text,  # 当前段落文本
-                    "language": ctx.streaming_state.last_language,
-                },
-                "confirmed_texts": [s["text"] for s in ctx.confirmed_segments],
-            })
+                # 4. 发送段落结束事件（仅对有效段落）
+                # 构建截断前的完整文本（段落之间用换行符分隔）
+                confirmed_text = "\n".join([s["text"] for s in ctx.confirmed_segments])
+                full_text_before_cut = confirmed_text + "\n" + segment_text if confirmed_text else segment_text
+                await websocket.send_json({
+                    "type": "segment_end",
+                    "task_id": task_id,
+                    "segment_index": ctx.segment_index,
+                    "reason": reason,
+                    "result": {
+                        "text": full_text_before_cut,  # 截断前的完整文本
+                        "segment_text": segment_text,  # 当前段落文本
+                        "language": ctx.streaming_state.last_language,
+                    },
+                    "confirmed_texts": [s["text"] for s in ctx.confirmed_segments],
+                })
+                # 5. 重置状态并发送新段落开始事件（仅对有效段落）
+                ctx.segment_index += 1
+                ctx.audio_buffer = np.array([], dtype=np.float32)
+                ctx.silence_samples = 0
+                ctx.total_samples = 0
 
-            # 5. 重置状态
-            ctx.segment_index += 1
-            ctx.audio_buffer = np.array([], dtype=np.float32)
-            ctx.silence_samples = 0
-            ctx.total_samples = 0
+                # 6. 初始化新的流式状态（保留原始配置）
+                ctx.streaming_state = engine.init_streaming_state(
+                    context=ctx.params.get("context", ""),
+                    language=ctx.params.get("language"),
+                    chunk_size_sec=ctx.params.get("chunk_size_sec", 2.0),
+                    unfixed_chunk_num=ctx.params.get("unfixed_chunk_num", 2),
+                    unfixed_token_num=ctx.params.get("unfixed_token_num", 5),
+                )
 
-            # 6. 初始化新的流式状态（保留原始配置）
-            ctx.streaming_state = engine.init_streaming_state(
-                context=ctx.params.get("context", ""),
-                language=ctx.params.get("language"),
-                chunk_size_sec=ctx.params.get("chunk_size_sec", 2.0),
-                unfixed_chunk_num=ctx.params.get("unfixed_chunk_num", 2),
-                unfixed_token_num=ctx.params.get("unfixed_token_num", 5),
-            )
+                # 7. 发送新段落开始事件
+                await websocket.send_json({
+                    "type": "segment_start",
+                    "task_id": task_id,
+                    "segment_index": ctx.segment_index,
+                })
 
-            # 7. 发送新段落开始事件
-            await websocket.send_json({
-                "type": "segment_start",
-                "task_id": task_id,
-                "segment_index": ctx.segment_index,
-            })
+                logger.info(f"[{task_id}] 截断完成，新段落 {ctx.segment_index} 开始 (原因: {reason})")
+            else:
+                # 段落太短，过滤掉，不增加索引，继续识别
+                logger.debug(f"[{task_id}] 段落 {ctx.segment_index} 文本太短({len(segment_text)}字符)，已过滤: '{segment_text}'")
 
-            logger.info(f"[{task_id}] 截断完成，新段落 {ctx.segment_index} 开始 (原因: {reason})")
+                # 重置状态但不增加索引
+                ctx.audio_buffer = np.array([], dtype=np.float32)
+                ctx.silence_samples = 0
+                ctx.total_samples = 0
+
+                # 重新初始化流式状态
+                ctx.streaming_state = engine.init_streaming_state(
+                    context=ctx.params.get("context", ""),
+                    language=ctx.params.get("language"),
+                    chunk_size_sec=ctx.params.get("chunk_size_sec", 2.0),
+                    unfixed_chunk_num=ctx.params.get("unfixed_chunk_num", 2),
+                    unfixed_token_num=ctx.params.get("unfixed_token_num", 5),
+                )
+
+                logger.info(f"[{task_id}] 短段落已过滤，继续识别当前段落 {ctx.segment_index}")
 
         except Exception as e:
             logger.error(f"[{task_id}] 截断操作失败: {e}")
