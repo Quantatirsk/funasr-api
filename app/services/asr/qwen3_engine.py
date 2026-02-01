@@ -8,7 +8,7 @@ Qwen3-ASR 引擎 - 内嵌 vLLM 后端
 
 import logging
 import os
-from typing import Optional, List, Any, Tuple, Dict
+from typing import Optional, List, Any, Tuple, Dict, TYPE_CHECKING
 from dataclasses import dataclass
 
 import torch
@@ -24,6 +24,9 @@ from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException
 from ...utils.audio import get_audio_duration
 
+if TYPE_CHECKING:
+    from qwen_asr import Qwen3ASRModel
+
 
 @dataclass
 class Qwen3StreamingState:
@@ -37,11 +40,18 @@ class Qwen3StreamingState:
 logger = logging.getLogger(__name__)
 
 # 延迟导入 qwen_asr，避免启动时加载
-try:
-    from qwen_asr import Qwen3ASRModel
-except ImportError:
-    Qwen3ASRModel = None
-    logger.warning("qwen-asr 未安装，Qwen3-ASR 功能不可用")
+_qwen_asr_module = None
+
+def _get_qwen_asr_model():
+    global _qwen_asr_module
+    if _qwen_asr_module is None:
+        try:
+            from qwen_asr import Qwen3ASRModel
+            _qwen_asr_module = Qwen3ASRModel
+        except ImportError:
+            _qwen_asr_module = None
+            logger.warning("qwen-asr 未安装，Qwen3-ASR 功能不可用")
+    return _qwen_asr_module
 
 
 class Qwen3ASREngine(BaseASREngine):
@@ -51,6 +61,8 @@ class Qwen3ASREngine(BaseASREngine):
     使用 vLLM 后端进行高效推理，内置 VAD、标点、语言识别
     支持字级时间戳（通过 Qwen3-ForcedAligner）
     """
+
+    model: "Any"
 
     def __init__(
         self,
@@ -75,6 +87,7 @@ class Qwen3ASREngine(BaseASREngine):
             max_new_tokens: 最大生成 token 数
             max_model_len: 最大模型序列长度（用于限制 KV 缓存）
         """
+        Qwen3ASRModel = _get_qwen_asr_model()
         if Qwen3ASRModel is None:
             raise ImportError(
                 "qwen-asr 未安装，请运行: pip install qwen-asr[vllm]"
