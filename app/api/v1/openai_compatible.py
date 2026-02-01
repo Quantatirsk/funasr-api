@@ -385,14 +385,14 @@ async def create_transcription(
         description="是否启用说话人分离（默认开启）。启用后响应 segments 会包含 speaker 字段"
     ),
     word_timestamps: bool = Form(
-        False,
-        description="是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）"
+        True,
+        description="是否返回字词级时间戳（默认开启，仅 Qwen3-ASR 模型支持）"
     ),
     # 5. 输出选项
     response_format: ResponseFormat = Form(
-        ResponseFormat.JSON,
+        ResponseFormat.VERBOSE_JSON,
         description="输出格式",
-        examples=["json", "text", "verbose_json", "srt", "vtt"],
+        examples=["verbose_json", "json", "text", "srt", "vtt"],
     ),
     # 6. 兼容性参数（暂不支持）
     prompt: Optional[str] = Form(None, description="提示文本（暂不支持，保留兼容）"),  # noqa: ARG001
