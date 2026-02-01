@@ -522,15 +522,56 @@ def _register_qwen3_engine(register_func, model_config_cls):
         # 使用 extra_kwargs 中的配置，允许 models.json 覆盖默认行为
         extra_kwargs = dict(config.extra_kwargs)
 
-        # 获取模型路径（保持 model ID 格式，如 "Qwen/Qwen3-ASR-0.6B"）
-        # vLLM 会自动从 ModelScope/HuggingFace 缓存加载
-        # 环境变量 HF_HUB_OFFLINE=1 和 TRANSFORMERS_OFFLINE=1 确保离线模式
-        model_path = config.models.get("offline")
+        # 获取模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
+        model_id = config.models.get("offline")
+
+        # 转换为 ModelScope 缓存绝对路径
+        # ModelScope 缓存格式: ~/.cache/modelscope/hub/models/{model_id}/
+        model_path = _resolve_modelscope_path(model_id)
+
+        # 同样处理 forced_aligner_path
+        forced_aligner_path = extra_kwargs.get("forced_aligner_path")
+        if forced_aligner_path:
+            extra_kwargs["forced_aligner_path"] = _resolve_modelscope_path(forced_aligner_path)
 
         return Qwen3ASREngine(
             model_path=model_path,
             device=settings.DEVICE,
             **extra_kwargs
         )
+
+
+def _resolve_modelscope_path(model_id: str) -> str:
+    """将 model ID 解析为 ModelScope 缓存绝对路径
+
+    ModelScope 缓存格式: ~/.cache/modelscope/hub/models/{model_id}/
+
+    Args:
+        model_id: 模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
+
+    Returns:
+        本地绝对路径（如果存在），否则返回原始 model_id
+    """
+    if not model_id:
+        return model_id
+
+    # 如果已经是绝对路径，直接返回
+    if os.path.isabs(model_id):
+        return model_id
+
+    import os
+    from pathlib import Path
+
+    # ModelScope 标准缓存路径
+    cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
+
+    if cache_path.exists() and cache_path.is_dir():
+        resolved_path = str(cache_path)
+        logger.info(f"模型 {model_id} 使用本地缓存: {resolved_path}")
+        return resolved_path
+
+    # 缓存不存在，返回原始 model_id（让 vLLM 尝试下载或报错）
+    logger.warning(f"模型 {model_id} 本地缓存不存在，将尝试在线下载")
+    return model_id
 
     register_func("qwen3", _create_qwen3_engine)
