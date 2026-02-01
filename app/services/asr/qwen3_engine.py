@@ -540,6 +540,8 @@ def _register_qwen3_engine(register_func, model_config_cls):
             **extra_kwargs
         )
 
+    register_func("qwen3", _create_qwen3_engine)
+
 
 def _resolve_modelscope_path(model_id: str) -> str:
     """将 model ID 解析为 ModelScope 缓存绝对路径
@@ -559,7 +561,6 @@ def _resolve_modelscope_path(model_id: str) -> str:
     if os.path.isabs(model_id):
         return model_id
 
-    import os
     from pathlib import Path
 
     # ModelScope 标准缓存路径
@@ -573,5 +574,3 @@ def _resolve_modelscope_path(model_id: str) -> str:
     # 缓存不存在，返回原始 model_id（让 vLLM 尝试下载或报错）
     logger.warning(f"模型 {model_id} 本地缓存不存在，将尝试在线下载")
     return model_id
-
-    register_func("qwen3", _create_qwen3_engine)
