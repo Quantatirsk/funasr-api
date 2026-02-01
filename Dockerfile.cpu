@@ -36,9 +36,9 @@ RUN uv pip install --no-cache \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Python dependencies
-COPY requirements.txt /tmp/requirements.txt
-RUN uv pip install --no-cache -r /tmp/requirements.txt --python /opt/venv/bin/python
+# Install Python dependencies (CPU version, without vLLM)
+COPY requirements-cpu.txt /tmp/requirements-cpu.txt
+RUN uv pip install --no-cache -r /tmp/requirements-cpu.txt --python /opt/venv/bin/python
 
 # Clean build tools and cache to reduce image size
 RUN apt remove -y build-essential curl && apt autoremove -y \
