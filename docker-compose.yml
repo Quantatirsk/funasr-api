@@ -20,7 +20,6 @@ services:
       - "8000"
     volumes:
       - ./temp:/app/temp
-      - ./data:/app/data
       - ./logs:/app/logs
       # 方案1: 项目本地目录（模型与项目放在一起，便于备份）
       - ./models/modelscope:/root/.cache/modelscope

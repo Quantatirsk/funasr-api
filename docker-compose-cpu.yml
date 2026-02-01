@@ -20,7 +20,6 @@ services:
       - "8000"
     volumes:
       - ./temp:/app/temp
-      - ./data:/app/data
       - ./logs:/app/logs
       # CPU 模式下只使用 ModelScope 模型（Paraformer）
       - ./models/modelscope:/root/.cache/modelscope
