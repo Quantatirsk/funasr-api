@@ -5,7 +5,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PATH=/opt/venv/bin:$PATH \
+    VIRTUAL_ENV=/opt/venv
 
 # Install system packages required for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,11 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install uv and Python dependencies
-# uv 使用 Rust 编写的解析器，比 pip 快 10-100 倍，对复杂依赖处理更好
+# Install uv and create virtual environment
+# Ubuntu 24.04 的 Python 是 externally managed，必须使用 venv
+RUN pip install --no-cache-dir uv
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache -r /tmp/requirements.txt
+RUN uv venv /opt/venv && \
+    uv pip install --no-cache -r /tmp/requirements.txt --python /opt/venv/bin/python
 
 # Clean apt packages and cache
 RUN apt remove -y build-essential && apt autoremove -y \
