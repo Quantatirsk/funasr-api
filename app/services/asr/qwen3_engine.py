@@ -353,6 +353,8 @@ class Qwen3ASREngine(BaseASREngine):
                     word_timestamps
                     and hasattr(result, "time_stamps")
                     and result.time_stamps
+                    and hasattr(result.time_stamps, "items")
+                    and result.time_stamps.items
                 ):
                     word_tokens = [
                         WordToken(
