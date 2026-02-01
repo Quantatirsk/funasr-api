@@ -525,17 +525,17 @@ def _register_qwen3_engine(register_func, model_config_cls):
         # 获取模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
         model_id = config.models.get("offline")
 
-        # 转换为 ModelScope 缓存绝对路径
-        # ModelScope 缓存格式: ~/.cache/modelscope/hub/models/{model_id}/
-        model_path = _resolve_modelscope_path(model_id)
+        # 确保模型在 HuggingFace 缓存中（从 ModelScope 复制）
+        # vLLM 需要 HF 格式的缓存才能正确加载
+        _ensure_model_in_hf_cache(model_id)
 
         # 同样处理 forced_aligner_path
         forced_aligner_path = extra_kwargs.get("forced_aligner_path")
         if forced_aligner_path:
-            extra_kwargs["forced_aligner_path"] = _resolve_modelscope_path(forced_aligner_path)
+            _ensure_model_in_hf_cache(forced_aligner_path)
 
         return Qwen3ASREngine(
-            model_path=model_path,
+            model_path=model_id,
             device=settings.DEVICE,
             **extra_kwargs
         )
@@ -543,34 +543,36 @@ def _register_qwen3_engine(register_func, model_config_cls):
     register_func("qwen3", _create_qwen3_engine)
 
 
-def _resolve_modelscope_path(model_id: str) -> str:
-    """将 model ID 解析为 ModelScope 缓存绝对路径
+def _ensure_model_in_hf_cache(model_id: str) -> str:
+    """确保模型可以被 vLLM 找到
 
-    ModelScope 缓存格式: ~/.cache/modelscope/hub/models/{model_id}/
+    通过设置 HF_HOME 环境变量为 ModelScope 缓存路径，
+    让 vLLM 直接从 ModelScope 缓存加载模型。
 
     Args:
         model_id: 模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
 
     Returns:
-        本地绝对路径（如果存在），否则返回原始 model_id
+        原始 model_id
     """
-    if not model_id:
-        return model_id
-
-    # 如果已经是绝对路径，直接返回
-    if os.path.isabs(model_id):
+    if not model_id or os.path.isabs(model_id):
         return model_id
 
     from pathlib import Path
 
-    # ModelScope 标准缓存路径
-    cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
+    # ModelScope 缓存路径
+    ms_cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
 
-    if cache_path.exists() and cache_path.is_dir():
-        resolved_path = str(cache_path)
-        logger.info(f"模型 {model_id} 使用本地缓存: {resolved_path}")
-        return resolved_path
+    # 检查 ModelScope 缓存是否存在
+    if not ms_cache_path.exists():
+        logger.warning(f"模型 {model_id} 本地缓存不存在，将尝试在线下载")
+        return model_id
 
-    # 缓存不存在，返回原始 model_id（让 vLLM 尝试下载或报错）
-    logger.warning(f"模型 {model_id} 本地缓存不存在，将尝试在线下载")
+    # 设置环境变量让 HF/vLLM 从 ModelScope 缓存加载
+    # HF_HOME 指向 modelscope 缓存目录的父目录
+    ms_hub_path = str(Path.home() / ".cache" / "modelscope" / "hub")
+    os.environ["HF_HOME"] = ms_hub_path
+    os.environ["HUGGINGFACE_HUB_CACHE"] = ms_hub_path
+    logger.info(f"设置 HF_HOME={ms_hub_path}，让 vLLM 从 ModelScope 缓存加载模型")
+
     return model_id
