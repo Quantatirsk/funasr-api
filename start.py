@@ -16,14 +16,12 @@ def check_and_download_models() -> bool:
     try:
         from app.utils.download_models import check_all_models, download_models
 
-        missing_ms, missing_hf = check_all_models()
-        if not missing_ms and not missing_hf:
+        missing = check_all_models()
+        if not missing:
             return True
 
-        print(f"\n⚠️  检测到 {len(missing_ms) + len(missing_hf)} 个模型未下载")
-        for mid in missing_ms:
-            print(f"  - {mid}")
-        for mid in missing_hf:
+        print(f"\n⚠️  检测到 {len(missing)} 个模型未下载")
+        for mid in missing:
             print(f"  - {mid}")
 
         # 检测是否为交互式终端（Docker 环境跳过询问）
