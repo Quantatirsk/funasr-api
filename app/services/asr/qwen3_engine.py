@@ -520,7 +520,8 @@ def _register_qwen3_engine(register_func, model_config_cls):
 
     def _create_qwen3_engine(config) -> "Qwen3ASREngine":
         # 使用 extra_kwargs 中的配置，允许 models.json 覆盖默认行为
-        extra_kwargs = dict(config.extra_kwargs)
+        # 过滤掉 None 值，避免覆盖默认参数
+        extra_kwargs = {k: v for k, v in config.extra_kwargs.items() if v is not None}
 
         # 获取模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
         model_id = config.models.get("offline")
