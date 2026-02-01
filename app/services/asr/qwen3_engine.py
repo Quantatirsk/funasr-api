@@ -522,8 +522,21 @@ def _register_qwen3_engine(register_func, model_config_cls):
         # 使用 extra_kwargs 中的配置，允许 models.json 覆盖默认行为
         extra_kwargs = dict(config.extra_kwargs)
 
+        # 将 model ID 转换为本地绝对路径，强制离线加载
+        model_path = config.models.get("offline")
+        if model_path and not os.path.isabs(model_path):
+            # 拼接为 ModelScope 本地缓存路径
+            model_path = os.path.join(settings.MODELSCOPE_PATH, model_path)
+
+        # 同样处理 forced_aligner_path
+        forced_aligner_path = extra_kwargs.get("forced_aligner_path")
+        if forced_aligner_path and not os.path.isabs(forced_aligner_path):
+            extra_kwargs["forced_aligner_path"] = os.path.join(
+                settings.MODELSCOPE_PATH, forced_aligner_path
+            )
+
         return Qwen3ASREngine(
-            model_path=config.models.get("offline"),
+            model_path=model_path,
             device=settings.DEVICE,
             **extra_kwargs
         )
