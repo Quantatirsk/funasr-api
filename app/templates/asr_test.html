@@ -554,23 +554,14 @@
                         this.segmentIndex = segmentIdx;
                     }
 
-                    // 构建显示HTML：已确认段落 + 当前段落
-                    let displayHtml = "";
+                    // 直接使用服务端返回的累积文本，不再拼接 confirmedSegments
+                    // 避免双重累加：服务端返回的 fullText 已包含所有历史文本
+                    const displayText = this.currentText || this.currentSegmentText || "";
+                    const displayHtml = displayText
+                        ? `<span style="color: #000; font-weight: 500;">${displayText}</span>`
+                        : "等待识别...";
 
-                    // 添加已确认段落（灰色）
-                    if (this.confirmedSegments.length > 0) {
-                        const confirmedText = this.confirmedSegments.map(s => s.text).join("");
-                        displayHtml += `<span style="color: #666;">${confirmedText}</span>`;
-                    }
-
-                    // 添加当前段落（黑色，如果是最终结果为绿色）
-                    const currentTextToShow = this.currentSegmentText || this.currentText;
-                    if (currentTextToShow) {
-                        if (displayHtml) displayHtml += " ";
-                        displayHtml += `<span style="color: #000; font-weight: 500;">${currentTextToShow}</span>`;
-                    }
-
-                    resultEl.innerHTML = displayHtml || "等待识别...";
+                    resultEl.innerHTML = displayHtml;
                     resultEl.scrollTop = resultEl.scrollHeight;
 
                     if (language) {
