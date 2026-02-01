@@ -18,8 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python dependencies
+# 使用 legacy resolver 避免依赖解析过深的问题
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver -r /tmp/requirements.txt || \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Clean apt packages and cache
 RUN apt remove -y build-essential && apt autoremove -y \
