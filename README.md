@@ -264,8 +264,8 @@ curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=tru
 
 | 模型 ID              | 名称              | 说明                                     | 特性      |
 | -------------------- | ----------------- | ---------------------------------------- | --------- |
-| `qwen3-asr-1.7b`   | Qwen3-ASR 1.7B    | 高性能多语言ASR，52种语言+方言，vLLM后端 | 离线      |
-| `qwen3-asr-0.6b`   | Qwen3-ASR 0.6B    | 轻量版多语言ASR，适合小显存环境          | 离线      |
+| `qwen3-asr-1.7b`   | Qwen3-ASR 1.7B    | 高性能多语言ASR，52种语言+方言，vLLM后端 | 离线/实时 |
+| `qwen3-asr-0.6b`   | Qwen3-ASR 0.6B    | 轻量版多语言ASR，适合小显存环境          | 离线/实时 |
 | `paraformer-large` | Paraformer Large  | 高精度中文语音识别                       | 离线/实时 |
 
 **模型动态加载:**
