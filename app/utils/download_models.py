@@ -88,12 +88,15 @@ def check_model_exists(model_id: str) -> tuple[bool, str]:
     """
     from pathlib import Path
 
-    cache_dir = Path.home() / ".cache" / "modelscope"
-    model_path = cache_dir / "hub" / "models" / model_id
+    try:
+        cache_dir = Path.home() / ".cache" / "modelscope"
+        model_path = cache_dir / "hub" / "models" / model_id
 
-    if model_path.exists() and model_path.is_dir():
-        if any(model_path.iterdir()):
-            return True, str(model_path)
+        if model_path.exists() and model_path.is_dir():
+            if any(model_path.iterdir()):
+                return True, str(model_path)
+    except Exception:
+        pass
 
     return False, ""
 
