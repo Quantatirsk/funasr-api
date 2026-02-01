@@ -1,5 +1,5 @@
-fastapi==0.115.6
-starlette==0.41.3
+fastapi==0.119.0
+starlette==0.45.0
 fastapi-offline==1.7.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.22
