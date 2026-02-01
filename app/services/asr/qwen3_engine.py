@@ -575,6 +575,7 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
         return model_id
 
     from pathlib import Path
+    import hashlib
 
     # ModelScope 缓存路径
     ms_cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
@@ -592,9 +593,12 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
     hf_cache_name = f"models--{org}--{model}"
     hf_cache_path = Path.home() / ".cache" / "huggingface" / "hub" / hf_cache_name
 
-    # 如果 HF 缓存已存在，无需处理
+    # 如果 HF 缓存已存在，检查是否有效
     if hf_cache_path.exists():
-        return model_id
+        # 检查 refs/main 是否存在
+        refs_main = hf_cache_path / "refs" / "main"
+        if refs_main.exists():
+            return model_id
 
     # 创建 HF 格式的符号链接
     logger.info(f"创建 HF 缓存符号链接: {model_id}")
@@ -605,19 +609,26 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
         snapshots_path = hf_cache_path / "snapshots"
         snapshots_path.mkdir(exist_ok=True)
 
-        # 使用固定 hash（model_id 的 hash）
-        import hashlib
-        snapshot_hash = hashlib.sha256(model_id.encode()).hexdigest()[:12]
-        snapshot_path = snapshots_path / snapshot_hash
+        # 使用 'main' 作为 snapshot 名称（简单方案）
+        snapshot_path = snapshots_path / "main"
+
+        # 如果已存在但不是符号链接，删除它
+        if snapshot_path.exists() or snapshot_path.is_symlink():
+            if snapshot_path.is_symlink():
+                snapshot_path.unlink()
+            elif snapshot_path.is_dir():
+                import shutil
+                shutil.rmtree(snapshot_path)
+            else:
+                snapshot_path.unlink()
 
         # 创建符号链接指向 ModelScope 缓存
-        if not snapshot_path.exists():
-            snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
+        snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
 
-        # 创建 refs/main 指向该 hash
+        # 创建 refs/main 指向 'main'
         refs_path = hf_cache_path / "refs"
         refs_path.mkdir(exist_ok=True)
-        (refs_path / "main").write_text(snapshot_hash)
+        (refs_path / "main").write_text("main")
 
         logger.info(f"HF 缓存符号链接创建完成: {snapshot_path} -> {ms_cache_path}")
 
