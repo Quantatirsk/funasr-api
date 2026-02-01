@@ -181,13 +181,14 @@ class ModelManager:
         """根据显存大小自动选择模型
 
         < 32GB 用 0.6B, >= 32GB 用 1.7B
+        无 CUDA 时禁用 Qwen3（vLLM 不支持 CPU），使用 paraformer-large
         """
         try:
             import torch
 
             if not torch.cuda.is_available():
-                logger.info("无 CUDA，使用 Qwen3-ASR-0.6B")
-                return "qwen3-asr-0.6b" if "qwen3-asr-0.6b" in self._models_config else None
+                logger.info("无 CUDA，禁用 Qwen3-ASR（vLLM 不支持 CPU），使用 paraformer-large")
+                return "paraformer-large" if "paraformer-large" in self._models_config else None
 
             # 获取所有 GPU 的显存，使用最小的那个
             gpu_count = torch.cuda.device_count()

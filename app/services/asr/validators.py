@@ -72,7 +72,14 @@ def _get_dynamic_model_list() -> List[str]:
 
     返回的列表中，Qwen 模型在前，Paraformer 在后
     且只返回当前显存配置下可用的 Qwen 模型
+    无 CUDA 时禁用 Qwen3（vLLM 不支持 CPU），只返回 paraformer-large
     """
+    import torch
+
+    if not torch.cuda.is_available():
+        # CPU 模式：禁用 Qwen3，只返回 paraformer
+        return ["paraformer-large"] if "paraformer-large" in _load_supported_models() else []
+
     active_qwen = _get_active_qwen_model()
 
     # Qwen 模型在前，按显存配置只返回可用的那个
