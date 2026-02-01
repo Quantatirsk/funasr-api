@@ -22,7 +22,7 @@ from ...core.exceptions import (
     create_error_response,
 )
 from ...services.asr.manager import get_model_manager
-from ...services.asr.validators import AudioParamsValidator, _get_default_model, _get_dynamic_model_list
+from ...services.asr.validators import _get_default_model, _get_dynamic_model_list
 from ...services.audio import get_audio_service
 
 logger = logging.getLogger(__name__)
@@ -146,14 +146,19 @@ def generate_vtt(segments: List[TranscriptionSegment]) -> str:
 
 def map_model_id(model: str) -> Optional[str]:
     """将 OpenAI 模型 ID 映射到 FunASR-API 模型 ID"""
+    # 处理 Swagger UI 的默认值 "string" 或空值
+    if not model or model.lower() == "string":
+        return None  # 使用默认模型
+
     # whisper-* 映射到默认模型（兼容 OpenAI SDK）
     if model.lower().startswith("whisper"):
         return None  # 使用默认模型
 
     # 验证模型ID是否受支持
-    if model not in AudioParamsValidator.SUPPORTED_MODELS:
+    supported_models = _get_dynamic_model_list()
+    if model not in supported_models:
         raise InvalidParameterException(
-            f"不支持的模型ID: {model}。支持的模型: {', '.join(AudioParamsValidator.SUPPORTED_MODELS)}"
+            f"不支持的模型ID: {model}。支持的模型: {', '.join(supported_models)}"
         )
 
     # 其他情况直接使用原模型 ID
@@ -368,9 +373,9 @@ async def create_transcription(
         ...,
         description="要转写的音频文件，支持 mp3/wav/flac/ogg/m4a/amr/pcm 等格式"
     ),
-    # 2. 核心参数
+    # 2. 核心参数 - 使用显式默认值，Swagger UI 才能正确显示
     model: str = Form(
-        default_factory=_get_default_model,
+        default="qwen3-asr-0.6b",  # 会在 update_openapi_schema 中被覆盖为动态值
         description="ASR 模型选择。可用模型通过 /v1/models 端点获取",
     ),
     # 3. 音频属性

@@ -41,7 +41,7 @@
                 "offline": "Qwen/Qwen3-ASR-1.7B"
             },
             "extra_kwargs": {
-                "gpu_memory_utilization": 0.4,
+                "gpu_memory_utilization": 0.3,
                 "max_model_len": 16384,
                 "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
                 "max_inference_batch_size": 32,
@@ -51,7 +51,7 @@
         "qwen3-asr-0.6b": {
             "name": "Qwen3-ASR-0.6B",
             "engine": "qwen3",
-            "description": "Qwen3-ASR 0.6B，轻量版支持52种语言和方言，适合小显存环境",
+            "description": "Qwen3-ASR 0.6B，轻量版支持52种语言和方言，vLLM后端高性能推理，字级时间戳，适合小显存环境",
             "languages": [
                 "zh",
                 "en",
@@ -76,7 +76,7 @@
             },
             "extra_kwargs": {
                 "gpu_memory_utilization": 0.3,
-                "max_model_len": 8192,
+                "max_model_len": 16384,
                 "forced_aligner_path": "Qwen/Qwen3-ForcedAligner-0.6B",
                 "max_inference_batch_size": 32,
                 "max_new_tokens": 1024
