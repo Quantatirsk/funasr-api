@@ -98,13 +98,14 @@ class Qwen3ASREngine(BaseASREngine):
         self.max_inference_batch_size = max_inference_batch_size
         self.max_new_tokens = max_new_tokens
 
-        # 构建 forced_aligner_kwargs
+        # 构建 forced_aligner_kwargs（仅在需要时）
         forced_aligner_kwargs = None
         if forced_aligner_path:
             forced_aligner_kwargs = {
                 "dtype": torch.bfloat16,
                 "device_map": self._device if ":" in self._device else "cuda:0",
             }
+            logger.info(f"启用 ForcedAligner: {forced_aligner_path}")
 
         logger.info(f"正在加载 Qwen3-ASR 模型: {model_path}")
         logger.info(f"设备: {self._device}, GPU 显存使用率: {gpu_memory_utilization}")
@@ -116,11 +117,13 @@ class Qwen3ASREngine(BaseASREngine):
             llm_kwargs = {
                 "model": model_path,
                 "gpu_memory_utilization": gpu_memory_utilization,
-                "forced_aligner": forced_aligner_path,
-                "forced_aligner_kwargs": forced_aligner_kwargs,
                 "max_inference_batch_size": max_inference_batch_size,
                 "max_new_tokens": max_new_tokens,
             }
+            # 只有当 forced_aligner_path 存在时才添加
+            if forced_aligner_path:
+                llm_kwargs["forced_aligner"] = forced_aligner_path
+                llm_kwargs["forced_aligner_kwargs"] = forced_aligner_kwargs
             # 添加 max_model_len（如果指定）
             if max_model_len:
                 llm_kwargs["max_model_len"] = max_model_len
