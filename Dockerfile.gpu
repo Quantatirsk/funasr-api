@@ -17,11 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies
-# 使用 legacy resolver 避免依赖解析过深的问题
+# Install uv and Python dependencies
+# uv 使用 Rust 编写的解析器，比 pip 快 10-100 倍，对复杂依赖处理更好
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --use-deprecated=legacy-resolver -r /tmp/requirements.txt || \
-    pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt
 
 # Clean apt packages and cache
 RUN apt remove -y build-essential && apt autoremove -y \
