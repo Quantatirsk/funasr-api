@@ -230,6 +230,43 @@ async def list_models(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def update_openapi_schema():
+    """在应用启动时更新 OpenAPI schema，使 model 参数显示为下拉框"""
+    from fastapi.routing import APIRoute
+
+    available_models = _get_dynamic_model_list()
+    default_model = _get_default_model()
+
+    for route in router.routes:
+        if isinstance(route, APIRoute) and route.endpoint.__name__ == "create_transcription":
+            if not route.openapi_extra:
+                route.openapi_extra = {}
+
+            # 定义 model 参数的 schema，添加 enum 使其显示为下拉框
+            model_param = {
+                "name": "model",
+                "in": "formData",
+                "required": False,
+                "schema": {
+                    "type": "string",
+                    "default": default_model,
+                    "enum": available_models,
+                },
+                "description": f"ASR 模型 ID。可选值：{', '.join(available_models)}（默认：{default_model}）",
+            }
+
+            # 获取或初始化 parameters
+            params = route.openapi_extra.get("parameters", [])
+
+            # 移除已有的 model 参数定义（如果存在）
+            params = [p for p in params if p.get("name") != "model"]
+
+            # 添加新的 model 参数定义
+            params.append(model_param)
+            route.openapi_extra["parameters"] = params
+            break
+
+
 def _get_transcription_description() -> str:
     """获取动态的转写端点描述"""
     available_models = _get_dynamic_model_list()
