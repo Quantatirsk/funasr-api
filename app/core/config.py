@@ -32,7 +32,6 @@ class Settings:
     # 路径配置
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     TEMP_DIR: str = "temp"
-    DATA_DIR: str = "data"  # 数据持久化目录
     # ModelScope 默认缓存结构: ~/.cache/modelscope/hub/models/{model_id}
     MODELSCOPE_PATH: str = os.path.expanduser("~/.cache/modelscope/hub/models")
 
@@ -206,7 +205,6 @@ class Settings:
     def _ensure_directories(self):
         """确保必需的目录存在"""
         os.makedirs(self.TEMP_DIR, exist_ok=True)
-        os.makedirs(self.DATA_DIR, exist_ok=True)
 
     @property
     def models_config_path(self) -> str:
