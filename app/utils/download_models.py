@@ -62,7 +62,10 @@ MODELSCOPE_MODELS = [
     # VAD 模型: config.py 中使用的是 iic/ 版本
     ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD"),
     # CAM++ 说话人分离: speaker_diarizer.py 中使用的是 iic/speech_campplus_speaker-diarization_common
+    # 注意：以下两个 damo/ 模型是 CAM++ 的隐式依赖，FunASR 会自动下载，需预置避免运行时下载
     ("iic/speech_campplus_speaker-diarization_common", "CAM++"),
+    ("damo/speech_campplus_sv_zh-cn_16k-common", "CAM++ SV (隐式依赖)"),
+    ("damo/speech_campplus-transformer_scl_zh-cn_16k-common", "CAM++ Transformer (隐式依赖)"),
     ("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", "标点模型"),
     ("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727", "标点模型(实时)"),
     ("iic/speech_ngram_lm_zh-cn-ai-wesp-fst", "N-gram LM"),
