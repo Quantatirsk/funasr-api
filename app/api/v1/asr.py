@@ -497,9 +497,6 @@ async def health_check(request: Request):
             ),
             "loaded_models": memory_info["model_list"],
             "memory_usage": memory_info.get("gpu_memory"),
-            "asr_model_mode": memory_info.get(
-                "asr_model_mode", settings.ASR_MODEL_MODE
-            ),
         }
     except Exception as e:
         return {
@@ -551,7 +548,6 @@ async def list_models(request: Request):
             "models": models,
             "total": len(models),
             "loaded_count": loaded_count,
-            "asr_model_mode": settings.ASR_MODEL_MODE,
         }
     except Exception as e:
         logger.error(f"获取模型列表时发生错误: {str(e)}")

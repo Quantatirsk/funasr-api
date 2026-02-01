@@ -52,7 +52,6 @@ class Settings:
         "local_files_only": True,  # 强制使用本地模型，禁止联网下载
     }
     ASR_MODELS_CONFIG: str = str(BASE_DIR / "app/services/asr/models.json")
-    ASR_MODEL_MODE: str = "all"  # ASR模型加载模式: realtime, offline, all
     ASR_ENABLE_REALTIME_PUNC: bool = True  # 是否启用实时标点模型（用于中间结果展示）
     AUTO_LOAD_CUSTOM_ASR_MODELS: str = (
         ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: paraformer-large）
@@ -122,7 +121,6 @@ class Settings:
         self.DEVICE = os.getenv("DEVICE", self.DEVICE)
 
         # ASR模型配置
-        self.ASR_MODEL_MODE = os.getenv("ASR_MODEL_MODE", self.ASR_MODEL_MODE)
         self.ASR_ENABLE_REALTIME_PUNC = (
             os.getenv("ASR_ENABLE_REALTIME_PUNC", "true").lower() == "true"
         )

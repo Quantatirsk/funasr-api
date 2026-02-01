@@ -137,7 +137,7 @@ def preload_models() -> dict:
         # 如果默认模型是 qwen3-asr-1.7b，加载它（以及可能的 0.6b 用于其他用途）
 
         # 添加 paraformer-large（如果配置了）
-        if "paraformer-large" in model_ids and settings.ASR_MODEL_MODE in ["all", "offline"]:
+        if "paraformer-large" in model_ids:
             models_to_load.append("paraformer-large")
 
         logger.info(f"📋 发现 {len(model_ids)} 个模型配置，将加载 {len(models_to_load)} 个: {', '.join(models_to_load)}")
@@ -178,22 +178,21 @@ def preload_models() -> dict:
     except Exception as e:
         logger.error(f"❌ 获取模型管理器失败: {e}")
 
-    # 3. 预加载语音活动检测模型(VAD) (如果ASR模式包含离线模型)
-    if settings.ASR_MODEL_MODE.lower() in ["all", "offline"]:
-        try:
-            from ..services.asr.engines import get_global_vad_model
+    # 3. 预加载语音活动检测模型(VAD)
+    try:
+        from ..services.asr.engines import get_global_vad_model
 
-            device = asr_engine.device if asr_engine else settings.DEVICE
-            vad_model = get_global_vad_model(device)
+        device = asr_engine.device if asr_engine else settings.DEVICE
+        vad_model = get_global_vad_model(device)
 
-            if vad_model:
-                result["vad_model"]["loaded"] = True
-            else:
-                result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
+        if vad_model:
+            result["vad_model"]["loaded"] = True
+        else:
+            result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
 
-        except Exception as e:
-            result["vad_model"]["error"] = str(e)
-            logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
+    except Exception as e:
+        result["vad_model"]["error"] = str(e)
+        logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
 
     # 4. 预加载标点符号模型 (离线版)
     try:

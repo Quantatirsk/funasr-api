@@ -280,7 +280,6 @@ class ModelManager:
                         if config.realtime_model_path
                         else None
                     ),
-                    "asr_model_mode": settings.ASR_MODEL_MODE,
                 }
             )
 
@@ -344,7 +343,6 @@ class ModelManager:
         memory_info = {
             "model_list": self._loaded_engines.keys_list(),
             "loaded_count": len(self._loaded_engines),
-            "asr_model_mode": settings.ASR_MODEL_MODE,
         }
 
         if torch.cuda.is_available():
@@ -377,15 +375,6 @@ class ModelManager:
         }
 
         for model_id, config in self._models_config.items():
-            # 根据当前模式跳过不兼容的模型
-            mode = settings.ASR_MODEL_MODE.lower()
-            if mode == "offline" and not config.has_offline_model:
-                results["skipped"].append(f"{model_id} (无离线版本)")
-                continue
-            if mode == "realtime" and not config.has_realtime_model:
-                results["skipped"].append(f"{model_id} (无实时版本)")
-                continue
-
             try:
                 logger.info(f"预加载模型: {model_id}")
                 engine = self.get_asr_engine(model_id)
@@ -405,30 +394,18 @@ class ModelManager:
         )
         return results
 
-    def validate_model_mode_compatibility(self, model_id: str) -> Dict[str, Any]:
-        """验证模型与当前ASR_MODEL_MODE的兼容性"""
+    def validate_model_config(self, model_id: str) -> Dict[str, Any]:
+        """验证模型配置是否有效"""
         config = self.get_model_config(model_id)
-        mode = settings.ASR_MODEL_MODE.lower()
 
         errors = []
-
-        if mode == "offline" and not config.has_offline_model:
-            errors.append(
-                f"模型 {model_id} 没有离线版本，但 ASR_MODEL_MODE 设置为 offline"
-            )
-        elif mode == "realtime" and not config.has_realtime_model:
-            errors.append(
-                f"模型 {model_id} 没有实时版本，但 ASR_MODEL_MODE 设置为 realtime"
-            )
-        elif mode == "all":
-            if not config.has_offline_model and not config.has_realtime_model:
-                errors.append(f"模型 {model_id} 既没有离线版本也没有实时版本")
+        if not config.has_offline_model and not config.has_realtime_model:
+            errors.append(f"模型 {model_id} 既没有离线版本也没有实时版本")
 
         return {
             "model_id": model_id,
-            "mode": mode,
             "errors": errors,
-            "compatible": len(errors) == 0,
+            "valid": len(errors) == 0,
         }
 
 

@@ -277,12 +277,6 @@ curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=tru
 
 通过 `QWEN_ASR_MODEL` 环境变量可强制指定模型版本。
 
-**模型加载模式 (`ASR_MODEL_MODE`):**
-
-- `offline` - 仅加载离线模型
-- `realtime` - 仅加载实时流式模型
-- `all` - 加载所有模型（默认）
-
 **预加载自定义模型:**
 
 ```bash
@@ -298,7 +292,6 @@ export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
 | `PORT`                           | `8000`     | 服务端口                                        |
 | `DEBUG`                          | `false`    | 调试模式                                        |
 | `DEVICE`                         | `auto`     | 设备选择:`auto`, `cpu`, `cuda:0`          |
-| `ASR_MODEL_MODE`                 | `all`      | 模型加载模式                                    |
 | `AUTO_LOAD_CUSTOM_ASR_MODELS`    | -          | 预加载的自定义模型                              |
 | `APPTOKEN`                       | -          | API 访问令牌                                    |
 | `APPKEY`                         | -          | 应用密钥                                        |

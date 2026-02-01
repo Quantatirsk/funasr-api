@@ -92,26 +92,11 @@ class FunASREngine(RealTimeASREngine):
         self._load_models_based_on_mode()
 
     def _load_models_based_on_mode(self) -> None:
-        """根据ASR_MODEL_MODE加载对应的模型"""
-        mode = settings.ASR_MODEL_MODE.lower()
-
-        if mode == "all":
-            if self.offline_model_path:
-                self._load_offline_model()
-            if self.realtime_model_path:
-                self._load_realtime_model()
-        elif mode == "offline":
-            if self.offline_model_path:
-                self._load_offline_model()
-            else:
-                logger.warning("ASR_MODEL_MODE设置为offline，但未提供离线模型路径")
-        elif mode == "realtime":
-            if self.realtime_model_path:
-                self._load_realtime_model()
-            else:
-                logger.warning("ASR_MODEL_MODE设置为realtime，但未提供实时模型路径")
-        else:
-            raise DefaultServerErrorException(f"不支持的ASR_MODEL_MODE: {mode}")
+        """加载所有可用的模型（离线和实时）"""
+        if self.offline_model_path:
+            self._load_offline_model()
+        if self.realtime_model_path:
+            self._load_realtime_model()
 
     def _load_offline_model(self) -> None:
         """加载离线模型 - 使用模块化加载器"""

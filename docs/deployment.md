@@ -158,7 +158,6 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
-| `ASR_MODEL_MODE` | `all` | 模型加载模式：`offline`, `realtime`, `all` |
 | `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型（逗号分隔） |
 | `ASR_ENABLE_REALTIME_PUNC` | `true` | 是否启用实时标点模型 |
 | `QWEN_ASR_MODEL` | `auto` | Qwen3-ASR 模型选择: auto/1.7B/0.6B |
@@ -239,7 +238,6 @@ services:
       - DEBUG=false
       - LOG_LEVEL=INFO
       - DEVICE=auto
-      - ASR_MODEL_MODE=all
       - ASR_BATCH_SIZE=4
       - WORKERS=1
       - INFERENCE_THREAD_POOL_SIZE=4
@@ -270,7 +268,6 @@ services:
       - DEBUG=false
       - LOG_LEVEL=INFO
       - DEVICE=cpu
-      - ASR_MODEL_MODE=offline
       - WORKERS=1
       - INFERENCE_THREAD_POOL_SIZE=1
     restart: unless-stopped
