@@ -237,39 +237,9 @@ async def list_models(request: Request):
 
 def update_openapi_schema():
     """在应用启动时更新 OpenAPI schema，使 model 参数显示为下拉框"""
-    from fastapi.routing import APIRoute
-
-    available_models = _get_dynamic_model_list()
-    default_model = _get_default_model()
-
-    for route in router.routes:
-        if isinstance(route, APIRoute) and route.endpoint.__name__ == "create_transcription":
-            if not route.openapi_extra:
-                route.openapi_extra = {}
-
-            # 定义 model 参数的 schema，添加 enum 使其显示为下拉框
-            model_param = {
-                "name": "model",
-                "in": "formData",
-                "required": False,
-                "schema": {
-                    "type": "string",
-                    "default": default_model,
-                    "enum": available_models,
-                },
-                "description": f"ASR 模型 ID。可选值：{', '.join(available_models)}（默认：{default_model}）",
-            }
-
-            # 获取或初始化 parameters
-            params = route.openapi_extra.get("parameters", [])
-
-            # 移除已有的 model 参数定义（如果存在）
-            params = [p for p in params if p.get("name") != "model"]
-
-            # 添加新的 model 参数定义
-            params.append(model_param)
-            route.openapi_extra["parameters"] = params
-            break
+    # 注意：model 参数由函数签名中的 Form() 定义，不要在这里的 openapi_extra 中重复添加
+    # FastAPI 会自动从函数签名生成正确的 OpenAPI schema
+    pass
 
 
 def _get_transcription_description() -> str:
@@ -375,8 +345,9 @@ async def create_transcription(
     ),
     # 2. 核心参数 - 使用显式默认值，Swagger UI 才能正确显示
     model: str = Form(
-        default="qwen3-asr-0.6b",  # 会在 update_openapi_schema 中被覆盖为动态值
-        description="ASR 模型选择。可用模型通过 /v1/models 端点获取",
+        default=_get_default_model(),
+        description="ASR 模型选择",
+        json_schema_extra={"enum": _get_dynamic_model_list()},
     ),
     # 3. 音频属性
     language: Optional[str] = Form(
