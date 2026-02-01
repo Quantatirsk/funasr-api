@@ -362,6 +362,10 @@ export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
+## Star 历史
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Quantatirsk/funasr-api&type=Date)](https://star-history.com/#Quantatirsk/funasr-api&Date)
+
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request 来改进项目!

@@ -365,6 +365,10 @@ After starting the service:
 
 This project uses the MIT License - see [LICENSE](LICENSE) file for details.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Quantatirsk/funasr-api&type=Date)](https://star-history.com/#Quantatirsk/funasr-api&Date)
+
 ## Contributing
 
 Issues and Pull Requests are welcome to improve the project!
