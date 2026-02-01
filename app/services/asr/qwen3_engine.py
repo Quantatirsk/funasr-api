@@ -120,7 +120,6 @@ class Qwen3ASREngine(BaseASREngine):
                 "forced_aligner_kwargs": forced_aligner_kwargs,
                 "max_inference_batch_size": max_inference_batch_size,
                 "max_new_tokens": max_new_tokens,
-                "local_files_only": True,  # 强制使用本地模型，禁止联网下载
             }
             # 添加 max_model_len（如果指定）
             if max_model_len:
