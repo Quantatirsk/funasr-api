@@ -39,4 +39,4 @@ RUN mkdir -p /app/temp /app/data /app/logs \
 
 EXPOSE 8000
 
-CMD ["python", "start.py"]
+CMD ["/opt/venv/bin/python", "start.py"]
