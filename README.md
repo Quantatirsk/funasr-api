@@ -1,8 +1,8 @@
 <div align="center">
 
-<h3>开箱即用的本地私有化部署语音识别服务</h3>
+<h3>Ready-to-use Local Speech Recognition API Service</h3>
 
-基于 FunASR 的语音识别 API 服务，提供高精度中文语音识别(ASR)功能，兼容阿里云语音 API 和 OpenAI Audio API。
+Speech recognition API service powered by FunASR and Qwen3-ASR, supporting 52 languages, compatible with OpenAI API and Alibaba Cloud Speech API.
 
 ---
 
@@ -12,45 +12,45 @@
 
 </div>
 
-## 主要特性
+## Features
 
-- **多模型支持** - 集成 Qwen3-ASR 1.7B、Qwen3-ASR 0.6B 和 Paraformer Large 高质量 ASR 模型
-- **说话人分离** - 基于 CAM++ 模型自动识别多说话人，返回说话人标记
-- **OpenAI API 兼容** - 支持 `/v1/audio/transcriptions` 端点，可直接使用 OpenAI SDK
-- **阿里云 API 兼容** - 支持阿里云语音识别 RESTful API 和 WebSocket 流式协议
-- **WebSocket 流式识别** - 支持实时流式语音识别，低延迟
-- **智能远场过滤** - 流式 ASR 自动过滤远场声音和环境音，减少误触发
-- **智能音频分段** - 基于 VAD 的贪婪合并算法，自动切分长音频，避免包含过长静音
-- **GPU 批处理加速** - 支持批量推理，比逐个处理快 2-3 倍
-- **灵活配置** - 支持环境变量配置，可按需加载模型
+- **Multi-Model Support** - Integrates Qwen3-ASR 1.7B, Qwen3-ASR 0.6B, and Paraformer Large ASR models
+- **Speaker Diarization** - Automatic multi-speaker identification using CAM++ model
+- **OpenAI API Compatible** - Supports `/v1/audio/transcriptions` endpoint, works with OpenAI SDK
+- **Alibaba Cloud API Compatible** - Supports Alibaba Cloud Speech RESTful API and WebSocket streaming protocol
+- **WebSocket Streaming** - Real-time streaming speech recognition with low latency
+- **Smart Far-Field Filtering** - Automatically filters far-field sounds and ambient noise in streaming ASR
+- **Intelligent Audio Segmentation** - VAD-based greedy merge algorithm for automatic long audio splitting
+- **GPU Batch Processing** - Batch inference support, 2-3x faster than sequential processing
+- **Flexible Configuration** - Environment variable based configuration
 
-## 快速部署
+## Quick Deployment
 
-### 1. 下载模型（首次部署必需）
+### 1. Download Models (Required for First Deployment)
 
-模型将在首次启动时自动下载。如需预下载或内网部署：
+Models will be automatically downloaded on first startup. For pre-download or offline deployment:
 
 ```bash
-# 创建模型目录
+# Create model directories
 mkdir -p models/modelscope models/huggingface
 
-# 启动服务，模型将自动下载到 models/ 目录
+# Start service, models will be downloaded to models/ directory
 docker-compose up -d
 
-# 或使用软链接（如果模型已在其他位置）
+# Or use symlinks (if models are already in other locations)
 ln -s ~/.cache/modelscope ./models/modelscope
 ln -s ~/.cache/huggingface ./models/huggingface
 ```
 
-> 详细说明请查看 [模型下载与部署指南](./docs/MODEL_SETUP.md)
+> For detailed instructions, see [Model Setup Guide](./docs/MODEL_SETUP.md)
 
-### 2. Docker 部署(推荐)
+### 2. Docker Deployment (Recommended)
 
 ```bash
-# 启动服务（GPU 版本）- 使用 docker-compose（推荐）
+# Start service (GPU version) - using docker-compose (recommended)
 docker-compose up -d
 
-# 或使用 docker run（GPU 版本）
+# Or using docker run (GPU version)
 docker run -d --name funasr-api \
   --gpus all \
   -p 17003:8000 \
@@ -61,85 +61,85 @@ docker run -d --name funasr-api \
   quantatrisk/funasr-api:gpu-latest
 ```
 
-服务访问地址：
-- **docker-compose**: `http://localhost:17003`（通过 Nginx 代理）
-- **docker run**: `http://localhost:17003`（直接映射）
-- **API 文档**: `http://localhost:17003/docs`
+Service URLs:
+- **docker-compose**: `http://localhost:17003` (via Nginx proxy)
+- **docker run**: `http://localhost:17003` (direct mapping)
+- **API Docs**: `http://localhost:17003/docs`
 
-> **注意**: docker-compose 配置使用 17003 端口作为 Nginx 入口，内部服务运行在 8000 端口
+> **Note**: docker-compose uses port 17003 as Nginx entrypoint, internal service runs on port 8000
 
-**模型挂载路径**（docker-compose 配置）：
-- **GPU 模式**: `./models/modelscope:/root/.cache/modelscope` 和 `./models/huggingface:/root/.cache/huggingface`
-- **CPU 模式**: 仅 `./models/modelscope:/root/.cache/modelscope`（Qwen3 模型需要 GPU）
+**Model Mount Paths** (docker-compose configuration):
+- **GPU Mode**: `./models/modelscope:/root/.cache/modelscope` and `./models/huggingface:/root/.cache/huggingface`
+- **CPU Mode**: Only `./models/modelscope:/root/.cache/modelscope` (Qwen3 models require GPU)
 
-**CPU 版本**请使用镜像 `quantatrisk/funasr-api:cpu-latest`
+**CPU Version**: Use image `quantatrisk/funasr-api:cpu-latest`
 
-**内网部署**：将 `models/` 目录打包复制到内网机器即可，详见 [MODEL_SETUP.md](./docs/MODEL_SETUP.md)
+**Offline Deployment**: Pack and copy the `models/` directory to the offline machine. See [MODEL_SETUP.md](./docs/MODEL_SETUP.md) for details.
 
-> 详细部署说明请查看 [部署指南](./docs/deployment.md)
+> Detailed deployment instructions: [Deployment Guide](./docs/deployment.md)
 
-### 本地开发
+### Local Development
 
-**系统要求:**
+**System Requirements:**
 
 - Python 3.10+
-- CUDA 12.1+(可选，用于 GPU 加速)
-- FFmpeg(音频格式转换)
+- CUDA 12.1+ (optional, for GPU acceleration)
+- FFmpeg (audio format conversion)
 
-**安装步骤:**
+**Installation:**
 
 ```bash
-# 克隆项目
+# Clone project
 cd FunASR-API
 
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 启动服务
+# Start service
 python start.py
 ```
 
-## API 接口
+## API Endpoints
 
-### OpenAI 兼容接口
+### OpenAI Compatible API
 
-| 端点                         | 方法 | 功能                    |
-| ---------------------------- | ---- | ----------------------- |
-| `/v1/audio/transcriptions` | POST | 音频转写（OpenAI 兼容） |
-| `/v1/models`               | GET  | 模型列表                |
+| Endpoint | Method | Function |
+|----------|--------|----------|
+| `/v1/audio/transcriptions` | POST | Audio transcription (OpenAI compatible) |
+| `/v1/models` | GET | Model list |
 
-**请求参数:**
+**Request Parameters:**
 
-| 参数                           | 类型   | 默认值                | 说明                                  |
-| ------------------------------ | ------ | --------------------- | ------------------------------------- |
-| `file`                       | file   | 必填                  | 音频文件                              |
-| `model`                      | string | `qwen3-asr-1.7b`    | 模型选择                              |
-| `language`                   | string | 自动检测              | 语言代码 (zh/en/ja)，保留兼容         |
-| `enable_speaker_diarization` | bool   | `true`              | 启用说话人分离                        |
-| `word_timestamps`            | bool   | `true`              | 返回字词级时间戳（仅Qwen3-ASR支持）  |
-| `response_format`            | string | `verbose_json`      | 输出格式                              |
-| `prompt`                     | string | -                     | 提示文本（保留兼容，暂未生效）        |
-| `temperature`                | float  | `0`                   | 采样温度（保留兼容，暂未生效）        |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | file | Required | Audio file |
+| `model` | string | `qwen3-asr-1.7b` | Model selection |
+| `language` | string | Auto-detect | Language code (zh/en/ja) |
+| `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
+| `word_timestamps` | bool | `true` | Return word-level timestamps (Qwen3-ASR only) |
+| `response_format` | string | `verbose_json` | Output format |
+| `prompt` | string | - | Prompt text (reserved) |
+| `temperature` | float | `0` | Sampling temperature (reserved) |
 
-**使用示例:**
+**Usage Examples:**
 
 ```python
-# 使用 OpenAI SDK
+# Using OpenAI SDK
 from openai import OpenAI
 
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="any")
 
 with open("audio.wav", "rb") as f:
     transcript = client.audio.transcriptions.create(
-        model="whisper-1",  # 会映射到默认模型
+        model="whisper-1",  # Maps to default model
         file=f,
-        response_format="verbose_json"  # 获取分段和说话人信息
+        response_format="verbose_json"  # Get segments and speaker info
     )
 print(transcript.text)
 ```
 
 ```bash
-# 使用 curl
+# Using curl
 curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
   -H "Authorization: Bearer any" \
   -F "file=@audio.wav" \
@@ -148,220 +148,221 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
   -F "enable_speaker_diarization=true"
 ```
 
-**支持的响应格式:** `json`, `text`, `srt`, `vtt`, `verbose_json`
+**Supported Response Formats:** `json`, `text`, `srt`, `vtt`, `verbose_json`
 
-### 阿里云兼容接口
+### Alibaba Cloud Compatible API
 
-| 端点                      | 方法      | 功能                   |
-| ------------------------- | --------- | ---------------------- |
-| `/stream/v1/asr`        | POST      | 语音识别（支持长音频） |
-| `/stream/v1/asr/models` | GET       | 模型列表               |
-| `/stream/v1/asr/health` | GET       | 健康检查               |
-| `/ws/v1/asr`            | WebSocket | 流式语音识别（阿里云协议兼容） |
-| `/ws/v1/asr/funasr`     | WebSocket | FunASR 流式识别（向后兼容）   |
-| `/ws/v1/asr/qwen`       | WebSocket | Qwen3-ASR 流式识别           |
-| `/ws/v1/asr/test`       | GET       | WebSocket 测试页面           |
+| Endpoint | Method | Function |
+|----------|--------|----------|
+| `/stream/v1/asr` | POST | Speech recognition (long audio support) |
+| `/stream/v1/asr/models` | GET | Model list |
+| `/stream/v1/asr/health` | GET | Health check |
+| `/ws/v1/asr` | WebSocket | Streaming ASR (Alibaba Cloud protocol compatible) |
+| `/ws/v1/asr/funasr` | WebSocket | FunASR streaming (backward compatible) |
+| `/ws/v1/asr/qwen` | WebSocket | Qwen3-ASR streaming |
+| `/ws/v1/asr/test` | GET | WebSocket test page |
 
-**请求参数:**
+**Request Parameters:**
 
-| 参数                           | 类型   | 默认值             | 说明                                  |
-| ------------------------------ | ------ | ------------------ | ------------------------------------- |
-| `model_id`                   | string | `qwen3-asr-1.7b` | 模型 ID                               |
-| `audio_address`              | string | -                  | 音频 URL（可选）                      |
-| `sample_rate`                | int    | `16000`          | 采样率                                |
-| `enable_speaker_diarization` | bool   | `true`           | 启用说话人分离                        |
-| `word_timestamps`            | bool   | `false`          | 返回字词级时间戳（仅Qwen3-ASR支持）  |
-| `vocabulary_id`              | string | -                  | 热词（格式：`词1 权重1 词2 权重2`） |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_id` | string | `qwen3-asr-1.7b` | Model ID |
+| `audio_address` | string | - | Audio URL (optional) |
+| `sample_rate` | int | `16000` | Sample rate |
+| `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
+| `word_timestamps` | bool | `false` | Return word-level timestamps (Qwen3-ASR only) |
+| `vocabulary_id` | string | - | Hotwords (format: `word1 weight1 word2 weight2`) |
 
-**使用示例:**
+**Usage Examples:**
 
 ```bash
-# 基本用法
+# Basic usage
 curl -X POST "http://localhost:8000/stream/v1/asr" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @audio.wav
 
-# 带参数
+# With parameters
 curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=true" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @audio.wav
 ```
 
-**响应示例:**
+**Response Example:**
 
 ```json
 {
   "task_id": "xxx",
   "status": 200,
   "message": "SUCCESS",
-  "result": "说话人1的内容...\n说话人2的内容...",
+  "result": "Speaker1 content...\nSpeaker2 content...",
   "duration": 60.5,
   "processing_time": 1.234,
   "segments": [
     {
-      "text": "今天天气不错。",
+      "text": "Today is a nice day.",
       "start_time": 0.0,
       "end_time": 2.5,
-      "speaker_id": "说话人1",
+      "speaker_id": "Speaker1",
       "word_tokens": [
-        {"text": "今天", "start_time": 0.0, "end_time": 0.5},
-        {"text": "天气", "start_time": 0.5, "end_time": 0.9},
-        {"text": "不错", "start_time": 0.9, "end_time": 1.3}
+        {"text": "Today", "start_time": 0.0, "end_time": 0.5},
+        {"text": "is", "start_time": 0.5, "end_time": 0.7},
+        {"text": "a nice day", "start_time": 0.7, "end_time": 1.5}
       ]
     }
   ]
 }
 ```
 
-**WebSocket 流式识别测试:** 访问 `http://localhost:8000/ws/v1/asr/test`
+**WebSocket Streaming Test:** Visit `http://localhost:8000/ws/v1/asr/test`
 
-## 说话人分离
+## Speaker Diarization
 
-基于 CAM++ 模型实现多说话人自动识别：
+Multi-speaker automatic identification based on CAM++ model:
 
-- **默认开启** - `enable_speaker_diarization=true`
-- **自动识别** - 无需预设说话人数量，模型自动检测
-- **说话人标记** - 响应中包含 `speaker_id` 字段（如 "说话人1"、"说话人2"）
-- **智能合并** - 两层合并策略避免孤立短片段：
-  - 第一层：小于10秒的同说话人片段累积合并
-  - 第二层：连续片段累积合并至60秒上限
-- **字幕支持** - SRT/VTT 格式输出包含说话人标记 `[说话人1] 文本内容`
+- **Enabled by Default** - `enable_speaker_diarization=true`
+- **Automatic Detection** - No preset speaker count needed, model auto-detects
+- **Speaker Labels** - Response includes `speaker_id` field (e.g., "Speaker1", "Speaker2")
+- **Smart Merging** - Two-layer merge strategy to avoid isolated short segments:
+  - Layer 1: Accumulate merge same-speaker segments < 10 seconds
+  - Layer 2: Accumulate merge continuous segments up to 60 seconds
+- **Subtitle Support** - SRT/VTT output includes speaker labels `[Speaker1] text content`
 
-关闭说话人分离：
+Disable speaker diarization:
 
 ```bash
 # OpenAI API
 -F "enable_speaker_diarization=false"
 
-# 阿里云 API
+# Alibaba Cloud API
 ?enable_speaker_diarization=false
 ```
 
-## 音频处理
+## Audio Processing
 
-### 智能分段策略
+### Intelligent Segmentation Strategy
 
-长音频自动分段处理：
+Automatic long audio segmentation:
 
-1. **VAD 语音检测** - 检测语音边界，过滤静音
-2. **贪婪合并** - 累积语音段，确保每段不超过 `MAX_SEGMENT_SEC`（默认90秒）
-3. **静音切分** - 语音段间静音超过3秒时强制切分，避免包含过长静音
-4. **批处理推理** - 多片段并行处理，GPU 模式下性能提升 2-3 倍
+1. **VAD Voice Detection** - Detect voice boundaries, filter silence
+2. **Greedy Merge** - Accumulate voice segments, ensure each segment does not exceed `MAX_SEGMENT_SEC` (default 90s)
+3. **Silence Split** - Force split when silence between voice segments exceeds 3 seconds
+4. **Batch Inference** - Multi-segment parallel processing, 2-3x performance improvement in GPU mode
 
-### WebSocket 流式识别限制
+### WebSocket Streaming Limitations
 
-**FunASR 模型限制**（使用 `/ws/v1/asr` 或 `/ws/v1/asr/funasr`）：
-- ✅ 实时语音识别、低延迟
-- ✅ 字句级时间戳
-- ❌ **词级时间戳**（未实现）
-- ❌ **置信度分数**（未实现）
+**FunASR Model Limitations** (using `/ws/v1/asr` or `/ws/v1/asr/funasr`):
+- ✅ Real-time speech recognition, low latency
+- ✅ Sentence-level timestamps
+- ❌ **Word-level timestamps** (not implemented)
+- ❌ **Confidence scores** (not implemented)
 
-**Qwen3-ASR 流式**（使用 `/ws/v1/asr/qwen`）：
-- ✅ 支持词级时间戳
-- ✅ 支持多语言实时识别
+**Qwen3-ASR Streaming** (using `/ws/v1/asr/qwen`):
+- ✅ Word-level timestamps
+- ✅ Multi-language real-time recognition
 
-## 支持的模型
+## Supported Models
 
-| 模型 ID              | 名称              | 说明                                     | 特性      |
-| -------------------- | ----------------- | ---------------------------------------- | --------- |
-| `qwen3-asr-1.7b`   | Qwen3-ASR 1.7B    | 高性能多语言ASR，52种语言+方言，vLLM后端 | 离线/实时 |
-| `qwen3-asr-0.6b`   | Qwen3-ASR 0.6B    | 轻量版多语言ASR，适合小显存环境          | 离线/实时 |
-| `paraformer-large` | Paraformer Large  | 高精度中文语音识别                       | 离线/实时 |
+| Model ID | Name | Description | Features |
+|----------|------|-------------|----------|
+| `qwen3-asr-1.7b` | Qwen3-ASR 1.7B | High-performance multilingual ASR, 52 languages + dialects, vLLM backend | Offline/Realtime |
+| `qwen3-asr-0.6b` | Qwen3-ASR 0.6B | Lightweight multilingual ASR, suitable for low VRAM environments | Offline/Realtime |
+| `paraformer-large` | Paraformer Large | High-precision Chinese speech recognition | Offline/Realtime |
 
-**模型动态加载:**
+**Dynamic Model Loading:**
 
-系统根据显存自动选择合适的 Qwen3-ASR 模型：
-- **显存 >= 32GB**: 自动加载 `qwen3-asr-1.7b`
-- **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b`
-- **无 CUDA**: 仅加载 `paraformer-large`（Qwen3 需要 vLLM/GPU）
+System automatically selects appropriate Qwen3-ASR model based on VRAM:
+- **VRAM >= 32GB**: Auto-load `qwen3-asr-1.7b`
+- **VRAM < 32GB**: Auto-load `qwen3-asr-0.6b`
+- **No CUDA**: Only load `paraformer-large` (Qwen3 requires vLLM/GPU)
 
-通过 `QWEN_ASR_MODEL` 环境变量可强制指定模型版本。
+Use `QWEN_ASR_MODEL` environment variable to force specific model version.
 
-**预加载自定义模型:**
+**Preload Custom Models:**
 
 ```bash
-# 启动时预加载 paraformer-large
+# Preload paraformer-large on startup
 export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
 ```
 
-## 环境变量
+## Environment Variables
 
-| 变量                               | 默认值       | 说明                                            |
-| ---------------------------------- | ------------ | ----------------------------------------------- |
-| `HOST`                           | `0.0.0.0`  | 服务绑定地址                                    |
-| `PORT`                           | `8000`     | 服务端口                                        |
-| `DEBUG`                          | `false`    | 调试模式                                        |
-| `DEVICE`                         | `auto`     | 设备选择:`auto`, `cpu`, `cuda:0`          |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS`    | -          | 预加载的自定义模型                              |
-| `APPTOKEN`                       | -          | API 访问令牌                                    |
-| `APPKEY`                         | -          | 应用密钥                                        |
-| `LOG_LEVEL`                      | `INFO`     | 日志级别（DEBUG/INFO/WARNING/ERROR）           |
-| `WORKERS`                        | `1`        | 工作进程数                                      |
-| `MAX_AUDIO_SIZE`                 | `2048`     | 最大音频文件大小（MB，支持单位如 2GB）         |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `0.0.0.0` | Service bind address |
+| `PORT` | `8000` | Service port |
+| `DEBUG` | `false` | Debug mode |
+| `DEVICE` | `auto` | Device selection: `auto`, `cpu`, `cuda:0` |
+| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | Preload custom models |
+| `APPTOKEN` | - | API access token |
+| `APPKEY` | - | App key |
+| `LOG_LEVEL` | `INFO` | Log level (DEBUG/INFO/WARNING/ERROR) |
+| `WORKERS` | `1` | Worker processes |
+| `MAX_AUDIO_SIZE` | `2048` | Max audio file size (MB, supports units like 2GB) |
 
-### 性能优化配置
+### Performance Optimization
 
-| 变量                               | 默认值  | 说明                                       |
-| ---------------------------------- | ------- | ------------------------------------------ |
-| `ASR_BATCH_SIZE`                 | `4`     | ASR 批处理大小（GPU 建议 4，CPU 建议 2）  |
-| `INFERENCE_THREAD_POOL_SIZE`     | `4`     | 推理线程池大小（CPU 模式建议 1）          |
-| `MAX_SEGMENT_SEC`                | `90`    | 音频分段最大时长（秒）                     |
-| `WS_MAX_BUFFER_SIZE`             | `160000` | WebSocket 音频缓冲区大小（样本数）        |
-| `ENABLE_STREAMING_VLLM`          | `false` | 是否加载流式 VLLM 实例（节省显存）        |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASR_BATCH_SIZE` | `4` | ASR batch size (GPU: 4, CPU: 2) |
+| `INFERENCE_THREAD_POOL_SIZE` | `4` | Inference thread pool size (CPU: 1) |
+| `MAX_SEGMENT_SEC` | `90` | Max audio segment duration (seconds) |
+| `WS_MAX_BUFFER_SIZE` | `160000` | WebSocket audio buffer size (samples) |
+| `ENABLE_STREAMING_VLLM` | `false` | Load streaming VLLM instance (saves VRAM) |
 
-### 模型配置
+### Model Configuration
 
-| 变量                               | 默认值   | 说明                                           |
-| ---------------------------------- | -------- | ---------------------------------------------- |
-| `QWEN_ASR_MODEL`                 | `auto`   | Qwen3-ASR 模型选择: auto/1.7B/0.6B            |
-| `MODELSCOPE_PATH`                | `~/.cache/modelscope/hub/models` | ModelScope 缓存路径 |
-| `HF_HOME`                        | `~/.cache/huggingface` | HuggingFace 缓存路径（GPU 模式）     |
-| `ASR_ENABLE_LM`                  | `true`   | 是否启用语言模型（Paraformer）                |
-| `LM_WEIGHT`                      | `0.15`   | 语言模型权重（0.1-0.3）                       |
-| `LM_BEAM_SIZE`                   | `10`     | 语言模型解码 beam size                        |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QWEN_ASR_MODEL` | `auto` | Qwen3-ASR model selection: auto/1.7B/0.6B |
+| `MODELSCOPE_PATH` | `~/.cache/modelscope/hub/models` | ModelScope cache path |
+| `HF_HOME` | `~/.cache/huggingface` | HuggingFace cache path (GPU mode) |
+| `ASR_ENABLE_LM` | `true` | Enable language model (Paraformer) |
+| `LM_WEIGHT` | `0.15` | Language model weight (0.1-0.3) |
+| `LM_BEAM_SIZE` | `10` | Language model decoding beam size |
 
-### 远场过滤配置
+### Near-Field Filtering
 
-| 变量                                 | 默认值   | 说明             |
-| ------------------------------------ | -------- | ---------------- |
-| `ASR_ENABLE_NEARFIELD_FILTER`      | `true` | 启用远场声音过滤 |
-| `ASR_NEARFIELD_RMS_THRESHOLD`      | `0.01` | RMS 能量阈值     |
-| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | 启用过滤日志     |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASR_ENABLE_NEARFIELD_FILTER` | `true` | Enable far-field sound filtering |
+| `ASR_NEARFIELD_RMS_THRESHOLD` | `0.01` | RMS energy threshold |
+| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | Enable filtering logs |
 
-> 详细配置说明请查看 [远场过滤文档](./docs/nearfield_filter.md)
+> Detailed configuration: [Near-Field Filter Docs](./docs/nearfield_filter.md)
 
-## 资源需求
+## Resource Requirements
 
-**最小配置（CPU）:**
+**Minimum (CPU):**
 
-- CPU: 4 核
-- 内存: 16GB
-- 磁盘: 20GB
+- CPU: 4 cores
+- Memory: 16GB
+- Disk: 20GB
 
-**推荐配置（GPU）:**
+**Recommended (GPU):**
 
-- CPU: 4 核
-- 内存: 16GB
-- GPU: NVIDIA GPU (16GB+ 显存)
-- 磁盘: 20GB
+- CPU: 4 cores
+- Memory: 16GB
+- GPU: NVIDIA GPU (16GB+ VRAM)
+- Disk: 20GB
 
-## API 文档
+## API Documentation
 
-启动服务后访问：
+After starting the service:
 
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-## 相关链接
+## Links
 
-- **部署指南**: [详细文档](./docs/deployment.md)
-- **远场过滤配置**: [配置指南](./docs/nearfield_filter.md)
+- **Deployment Guide**: [Detailed Docs](./docs/deployment.md)
+- **Near-Field Filter Config**: [Config Guide](./docs/nearfield_filter.md)
 - **FunASR**: [FunASR GitHub](https://github.com/alibaba-damo-academy/FunASR)
+- **Chinese README**: [中文文档](./docs/README_zh.md)
 
-## 许可证
+## License
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+This project uses the MIT License - see [LICENSE](LICENSE) file for details.
 
-## 贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request 来改进项目!
+Issues and Pull Requests are welcome to improve the project!
