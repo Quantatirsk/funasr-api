@@ -11,20 +11,27 @@
 **前置要求：**
 - NVIDIA GPU (CUDA 12.1+)
 - 已安装 NVIDIA Container Toolkit
+- 显存 6GB+（推荐 16GB+ 以支持 Qwen3-ASR 1.7B）
 
 ```bash
-# 使用 docker run
+# 使用 docker run（带模型挂载）
 docker run -d --name funasr-api \
   --gpus all \
-  -p 8000:8000 \
+  -p 17003:8000 \
+  -v ./models/modelscope:/root/.cache/modelscope \
+  -v ./models/huggingface:/root/.cache/huggingface \
   -v ./logs:/app/logs \
   -v ./temp:/app/temp \
   -e DEVICE=auto \
   quantatrisk/funasr-api:gpu-latest
 
-# 或使用 docker-compose
+# 或使用 docker-compose（推荐）
 docker-compose up -d
 ```
+
+**服务访问地址：**
+- API 服务: `http://localhost:17003`
+- API 文档: `http://localhost:17003/docs`
 
 ### CPU 版本部署
 
@@ -32,26 +39,35 @@ docker-compose up -d
 
 ```bash
 docker run -d --name funasr-api \
-  -p 8000:8000 \
+  -p 17003:8000 \
+  -v ./models/modelscope:/root/.cache/modelscope \
   -v ./logs:/app/logs \
   -v ./temp:/app/temp \
   -e DEVICE=cpu \
-  quantatrisk/funasr-api:latest
+  quantatrisk/funasr-api:cpu-latest
 ```
+
+**注意：** CPU 版本不支持 Qwen3-ASR 模型（需要 GPU + vLLM），仅支持 Paraformer-large。
 
 ### 验证部署
 
 ```bash
 # 健康检查
-curl http://localhost:8000/stream/v1/asr/health
+curl http://localhost:17003/stream/v1/asr/health
 
 # 查看可用模型
-curl http://localhost:8000/stream/v1/asr/models
+curl http://localhost:17003/stream/v1/asr/models
 
-# 测试语音识别
-curl -X POST "http://localhost:8000/stream/v1/asr" \
+# 测试语音识别（阿里云协议）
+curl -X POST "http://localhost:17003/stream/v1/asr" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @test.wav
+
+# 测试 OpenAI 兼容接口
+curl -X POST "http://localhost:17003/v1/audio/transcriptions" \
+  -H "Authorization: Bearer any" \
+  -F "file=@test.wav" \
+  -F "model=qwen3-asr-1.7b"
 ```
 
 ## 从源码构建镜像
@@ -93,32 +109,43 @@ docker build -t funasr-api:latest -f Dockerfile .
 docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 ```
 
-### 预下载的模型
+### 模型说明
 
-构建时会自动下载以下模型：
+服务支持以下 ASR 模型：
 
-| 模型 | 说明 |
-|------|------|
-| Qwen3-ASR-1.7B ⭐ | 多语言 ASR（默认，52种语言+方言，字级时间戳） |
-| Paraformer Large (VAD+PUNC) | 高精度中文 ASR |
-| Paraformer Large Online | 实时流式 ASR |
-| VAD Model | 语音活动检测 |
-| CAM++ | 说话人分离 |
-| Punctuation Model | 标点预测（离线） |
-| Punctuation Model (Realtime) | 标点预测（实时） |
-| Language Model | N-gram 语言模型 |
+| 模型 | 说明 | 适用场景 |
+|------|------|----------|
+| Qwen3-ASR-1.7B ⭐ | 多语言 ASR（52种语言+方言，字级时间戳） | GPU 推荐 |
+| Qwen3-ASR-0.6B | 轻量版多语言 ASR | GPU 小显存 |
+| Paraformer Large | 高精度中文 ASR | CPU/GPU 均可 |
+
+**模型动态加载：**
+
+系统根据显存自动选择合适的 Qwen3-ASR 模型：
+- **显存 >= 32GB**: 自动加载 `qwen3-asr-1.7b`
+- **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b`
+- **无 CUDA**: 仅加载 `paraformer-large`（Qwen3 需要 vLLM/GPU）
+
+通过 `QWEN_ASR_MODEL` 环境变量可强制指定模型版本。
+
+### 模型下载
+
+模型将在首次启动时自动下载。如需预下载或内网部署，请参考 [MODEL_SETUP.md](./MODEL_SETUP.md)。
 
 ## 环境变量配置
 
-### 服务器配置
+### 基础配置
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `HOST` | `0.0.0.0` | 服务绑定地址 |
 | `PORT` | `8000` | 服务端口 |
 | `DEBUG` | `false` | 调试模式（启用后可访问 /docs） |
+| `LOG_LEVEL` | `INFO` | 日志级别：DEBUG, INFO, WARNING, ERROR |
 | `WORKERS` | `1` | 工作进程数（多进程会复制模型，显存成倍增加） |
-| `INFERENCE_THREAD_POOL_SIZE` | `4` | 推理线程池大小 |
+| `MAX_AUDIO_SIZE` | `2048` | 最大音频文件大小（MB，支持单位如 2GB） |
+| `APPTOKEN` | - | API 访问令牌（X-NLS-Token header） |
+| `APPKEY` | - | 应用密钥（appkey 参数） |
 
 ### 设备配置
 
@@ -132,8 +159,10 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `ASR_MODEL_MODE` | `all` | 模型加载模式：`offline`, `realtime`, `all` |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型 |
+| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型（逗号分隔） |
 | `ASR_ENABLE_REALTIME_PUNC` | `true` | 是否启用实时标点模型 |
+| `QWEN_ASR_MODEL` | `auto` | Qwen3-ASR 模型选择: auto/1.7B/0.6B |
+| `ENABLE_STREAMING_VLLM` | `false` | 是否加载流式 VLLM 实例（节省显存） |
 
 **模式说明：**
 
@@ -142,6 +171,15 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 | `offline` | 仅加载离线模型 | REST API 调用 |
 | `realtime` | 仅加载实时流式模型 | WebSocket 流式识别 |
 | `all` | 加载所有模型（默认） | 完整功能 |
+
+### 性能优化配置
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `ASR_BATCH_SIZE` | `4` | ASR 批处理大小（GPU 建议 4，CPU 建议 2） |
+| `INFERENCE_THREAD_POOL_SIZE` | `4` | 推理线程池大小（CPU 模式建议 1） |
+| `MAX_SEGMENT_SEC` | `90` | 音频分段最大时长（秒） |
+| `WS_MAX_BUFFER_SIZE` | `160000` | WebSocket 音频缓冲区大小（样本数） |
 
 ### 远场过滤配置
 
@@ -183,7 +221,7 @@ curl -H "Authorization: Bearer your_token" http://localhost:8000/v1/models
 
 ## Docker Compose 配置
 
-### 基础配置
+### 基础配置（GPU）
 
 ```yaml
 services:
@@ -191,8 +229,10 @@ services:
     image: quantatrisk/funasr-api:gpu-latest
     container_name: funasr-api
     ports:
-      - "8000:8000"
+      - "17003:8000"
     volumes:
+      - ./models/modelscope:/root/.cache/modelscope
+      - ./models/huggingface:/root/.cache/huggingface
       - ./temp:/app/temp
       - ./logs:/app/logs
     environment:
@@ -200,6 +240,9 @@ services:
       - LOG_LEVEL=INFO
       - DEVICE=auto
       - ASR_MODEL_MODE=all
+      - ASR_BATCH_SIZE=4
+      - WORKERS=1
+      - INFERENCE_THREAD_POOL_SIZE=4
     restart: unless-stopped
     deploy:
       resources:
@@ -210,6 +253,29 @@ services:
               capabilities: [gpu]
 ```
 
+### CPU 版本配置
+
+```yaml
+services:
+  funasr-api:
+    image: quantatrisk/funasr-api:cpu-latest
+    container_name: funasr-api
+    ports:
+      - "17003:8000"
+    volumes:
+      - ./models/modelscope:/root/.cache/modelscope
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - DEVICE=cpu
+      - ASR_MODEL_MODE=offline
+      - WORKERS=1
+      - INFERENCE_THREAD_POOL_SIZE=1
+    restart: unless-stopped
+```
+
 ### 生产环境配置（带 Nginx）
 
 ```yaml
@@ -218,7 +284,7 @@ services:
     image: nginx:1.27-alpine
     container_name: funasr-nginx
     ports:
-      - "80:80"
+      - "17003:80"
     volumes:
       - ./funasr.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -233,6 +299,8 @@ services:
     expose:
       - "8000"
     volumes:
+      - ./models/modelscope:/root/.cache/modelscope
+      - ./models/huggingface:/root/.cache/huggingface
       - ./temp:/app/temp
       - ./data:/app/data
       - ./logs:/app/logs
@@ -243,6 +311,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=0
       - WORKERS=1
       - INFERENCE_THREAD_POOL_SIZE=4
+      - ASR_BATCH_SIZE=4
     restart: unless-stopped
     networks:
       - funasr-net
@@ -264,7 +333,7 @@ networks:
 ### 健康检查
 
 ```bash
-curl http://localhost:8000/stream/v1/asr/health
+curl http://localhost:17003/stream/v1/asr/health
 ```
 
 ### 日志监控
@@ -326,8 +395,11 @@ docker exec -it funasr-api /bin/bash
 ## 更新服务
 
 ```bash
-# 拉取最新镜像
+# 拉取最新镜像（GPU 版本）
 docker pull quantatrisk/funasr-api:gpu-latest
+
+# 拉取最新镜像（CPU 版本）
+docker pull quantatrisk/funasr-api:cpu-latest
 
 # 重启服务
 docker-compose down && docker-compose up -d

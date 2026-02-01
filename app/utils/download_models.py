@@ -10,6 +10,7 @@
 
 import os
 from pathlib import Path
+from typing import Optional
 
 from huggingface_hub import snapshot_download as hf_snapshot_download
 from modelscope.hub.snapshot_download import snapshot_download as ms_snapshot_download
@@ -56,19 +57,21 @@ def _get_qwen_models() -> list[tuple[str, str]]:
 # === ModelScope 模型 (Paraformer) ===
 # 注意：仅列出代码中实际使用的模型，避免重复下载
 # 同一模型的不同命名（如 iic/ vs damo/）只保留实际使用的版本
+# 格式: (model_id, description, revision)  revision 为 None 表示使用最新版本
 MODELSCOPE_MODELS = [
-    ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large"),
-    ("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online", "Paraformer Online"),
+    ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large", None),
+    ("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online", "Paraformer Online", None),
     # VAD 模型: config.py 中使用的是 damo/ 版本
-    ("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD"),
+    # CAM++ 依赖 v2.0.2 版本，不是最新版
+    ("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD", "v2.0.2"),
     # CAM++ 说话人分离: speaker_diarizer.py 中使用的是 iic/speech_campplus_speaker-diarization_common
     # 注意：以下两个 damo/ 模型是 CAM++ 的隐式依赖，FunASR 会自动下载，需预置避免运行时下载
-    ("iic/speech_campplus_speaker-diarization_common", "CAM++"),
-    ("damo/speech_campplus_sv_zh-cn_16k-common", "CAM++ SV (隐式依赖)"),
-    ("damo/speech_campplus-transformer_scl_zh-cn_16k-common", "CAM++ Transformer (隐式依赖)"),
-    ("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", "标点模型"),
-    ("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727", "标点模型(实时)"),
-    ("iic/speech_ngram_lm_zh-cn-ai-wesp-fst", "N-gram LM"),
+    ("iic/speech_campplus_speaker-diarization_common", "CAM++", None),
+    ("damo/speech_campplus_sv_zh-cn_16k-common", "CAM++ SV (隐式依赖)", None),
+    ("damo/speech_campplus-transformer_scl_zh-cn_16k-common", "CAM++ Transformer (隐式依赖)", None),
+    ("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", "标点模型", None),
+    ("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727", "标点模型(实时)", None),
+    ("iic/speech_ngram_lm_zh-cn-ai-wesp-fst", "N-gram LM", None),
 ]
 
 # === HuggingFace 模型 (Qwen3-ASR) ===
@@ -105,25 +108,26 @@ def check_model_exists(model_id: str, source: str = "modelscope") -> tuple[bool,
     return False, ""
 
 
-def check_all_models() -> list[tuple[str, str, str]]:
+def check_all_models() -> list[tuple[str, str, str, Optional[str]]]:
     """检查所有模型是否存在
 
     Returns:
-        缺失的模型列表，每个元素为 (model_id, description, source)
+        缺失的模型列表，每个元素为 (model_id, description, source, revision)
     """
     missing = []
 
     # 检查 ModelScope 模型
-    for model_id, desc in MODELSCOPE_MODELS:
+    for item in MODELSCOPE_MODELS:
+        model_id, desc, revision = item
         exists, _ = check_model_exists(model_id, source="modelscope")
         if not exists:
-            missing.append((model_id, desc, "modelscope"))
+            missing.append((model_id, desc, "modelscope", revision))
 
-    # 检查 HuggingFace 模型
+    # 检查 HuggingFace 模型 (HF 模型暂不支持指定版本)
     for model_id, desc in HF_MODELS:
         exists, _ = check_model_exists(model_id, source="huggingface")
         if not exists:
-            missing.append((model_id, desc, "huggingface"))
+            missing.append((model_id, desc, "huggingface", None))
 
     return missing
 
@@ -163,20 +167,26 @@ def download_models(auto_mode: bool = False) -> bool:
     downloaded = []
 
     # 下载 ModelScope 模型 (Paraformer)
-    ms_missing = [(mid, desc) for mid, desc, src in missing if src == "modelscope"]
+    ms_missing = [(mid, desc, rev) for mid, desc, src, rev in missing if src == "modelscope"]
     if ms_missing:
         if not auto_mode:
             print("\n📦 开始下载 ModelScope 模型 (Paraformer)...")
             print("-" * 60)
 
-        for i, (model_id, desc) in enumerate(ms_missing, 1):
+        for i, (model_id, desc, revision) in enumerate(ms_missing, 1):
             if not auto_mode:
                 print(f"\n[{i}/{len(ms_missing)}] {desc}")
                 print(f"    模型ID: {model_id}")
+                if revision:
+                    print(f"    版本: {revision}")
                 print(f"    📥 开始下载...", end="")
 
             try:
-                path = ms_snapshot_download(model_id)
+                # 传递版本参数，如果指定了版本
+                if revision:
+                    path = ms_snapshot_download(model_id, revision=revision)
+                else:
+                    path = ms_snapshot_download(model_id)
                 if not auto_mode:
                     print(f" ✅ 完成: {path}")
                 downloaded.append(model_id)
@@ -186,13 +196,13 @@ def download_models(auto_mode: bool = False) -> bool:
                 failed.append((model_id, str(e)))
 
     # 下载 HuggingFace 模型 (Qwen3-ASR)
-    hf_missing = [(mid, desc) for mid, desc, src in missing if src == "huggingface"]
+    hf_missing = [(mid, desc, rev) for mid, desc, src, rev in missing if src == "huggingface"]
     if hf_missing:
         if not auto_mode:
             print("\n📦 开始下载 HuggingFace 模型 (Qwen3-ASR)...")
             print("-" * 60)
 
-        for i, (model_id, desc) in enumerate(hf_missing, 1):
+        for i, (model_id, desc, _) in enumerate(hf_missing, 1):
             if not auto_mode:
                 print(f"\n[{i}/{len(hf_missing)}] {desc}")
                 print(f"    模型ID: {model_id}")

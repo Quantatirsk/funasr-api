@@ -249,12 +249,12 @@ class BaseASREngine(ABC):
                 except Exception as e:
                     logger.error(f"批次推理失败: {e}, 跳过该批次")
 
-            # 清理临时文件
+            # 清理临时文件（独立清理，避免条件遗漏）
             try:
-                if enable_speaker_diarization and speaker_segments:
+                if speaker_segments:
                     from app.utils.speaker_diarizer import SpeakerDiarizer
                     SpeakerDiarizer.cleanup_segments(speaker_segments)
-                elif audio_segments:
+                if audio_segments:
                     AudioSplitter.cleanup_segments(audio_segments)
             except Exception as e:
                 logger.warning(f"清理临时文件时出错: {e}")

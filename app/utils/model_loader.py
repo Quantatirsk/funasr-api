@@ -146,19 +146,16 @@ def preload_models() -> dict:
             result["asr_models"][model_id] = {"loaded": False, "error": None}
 
             try:
-                logger.info(f"📥 正在加载ASR模型: {model_id}...")
                 engine = model_manager.get_asr_engine(model_id)
 
                 if engine.is_model_loaded():
                     result["asr_models"][model_id]["loaded"] = True
-                    logger.info(f"✅ ASR模型加载成功: {model_id}")
 
                     # 保存第一个成功加载的引擎引用（用于后续获取device）
                     if asr_engine is None:
                         asr_engine = engine
                 else:
                     result["asr_models"][model_id]["error"] = "模型加载后未正确初始化"
-                    logger.warning(f"⚠️  ASR模型 {model_id} 加载后未正确初始化")
 
                 # 为 Qwen3-ASR 加载流式专用实例（完全隔离状态）
                 # 根据实际加载的模型决定流式实例
@@ -167,21 +164,16 @@ def preload_models() -> dict:
                     streaming_key = f"{model_id}-streaming"
                     result["asr_models"][streaming_key] = {"loaded": False, "error": None}
                     try:
-                        logger.info(f"📥 正在加载ASR模型流式实例: {streaming_key}...")
                         streaming_engine = model_manager.get_asr_engine(model_id, streaming=True)
                         if streaming_engine.is_model_loaded():
                             result["asr_models"][streaming_key]["loaded"] = True
-                            logger.info(f"✅ ASR模型流式实例加载成功: {streaming_key}")
                         else:
                             result["asr_models"][streaming_key]["error"] = "模型加载后未正确初始化"
-                            logger.warning(f"⚠️  ASR模型流式实例 {streaming_key} 加载后未正确初始化")
                     except Exception as e:
                         result["asr_models"][streaming_key]["error"] = str(e)
-                        logger.error(f"❌ ASR模型流式实例 {streaming_key} 加载失败: {e}")
 
             except Exception as e:
                 result["asr_models"][model_id]["error"] = str(e)
-                logger.error(f"❌ ASR模型 {model_id} 加载失败: {e}")
 
     except Exception as e:
         logger.error(f"❌ 获取模型管理器失败: {e}")
@@ -189,7 +181,6 @@ def preload_models() -> dict:
     # 3. 预加载语音活动检测模型(VAD) (如果ASR模式包含离线模型)
     if settings.ASR_MODEL_MODE.lower() in ["all", "offline"]:
         try:
-            logger.info("📥 正在加载语音活动检测模型(VAD)...")
             from ..services.asr.engines import get_global_vad_model
 
             device = asr_engine.device if asr_engine else settings.DEVICE
@@ -197,20 +188,15 @@ def preload_models() -> dict:
 
             if vad_model:
                 result["vad_model"]["loaded"] = True
-                logger.info("✅ 语音活动检测模型(VAD)加载成功")
             else:
                 result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
-                logger.warning("⚠️  语音活动检测模型(VAD)加载后返回None")
 
         except Exception as e:
             result["vad_model"]["error"] = str(e)
             logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
-    else:
-        logger.info("⏭️  跳过语音活动检测模型(VAD)加载 (ASR_MODEL_MODE=realtime)")
 
     # 4. 预加载标点符号模型 (离线版)
     try:
-        logger.info("📥 正在加载标点符号模型(离线)...")
         from ..services.asr.engines import get_global_punc_model
 
         device = asr_engine.device if asr_engine else settings.DEVICE
@@ -218,10 +204,8 @@ def preload_models() -> dict:
 
         if punc_model:
             result["punc_model"]["loaded"] = True
-            logger.info("✅ 标点符号模型(离线)加载成功")
         else:
             result["punc_model"]["error"] = "标点符号模型加载后返回None"
-            logger.warning("⚠️  标点符号模型(离线)加载后返回None")
 
     except Exception as e:
         result["punc_model"]["error"] = str(e)
@@ -230,7 +214,6 @@ def preload_models() -> dict:
     # 5. 预加载实时标点符号模型 (如果启用)
     if settings.ASR_ENABLE_REALTIME_PUNC:
         try:
-            logger.info("📥 正在加载实时标点符号模型...")
             from ..services.asr.engines import get_global_punc_realtime_model
 
             device = asr_engine.device if asr_engine else settings.DEVICE
@@ -238,36 +221,26 @@ def preload_models() -> dict:
 
             if punc_realtime_model:
                 result["punc_realtime_model"]["loaded"] = True
-                logger.info("✅ 实时标点符号模型加载成功")
             else:
                 result["punc_realtime_model"]["error"] = "实时标点符号模型加载后返回None"
-                logger.warning("⚠️  实时标点符号模型加载后返回None")
 
         except Exception as e:
             result["punc_realtime_model"]["error"] = str(e)
             logger.error(f"❌ 实时标点符号模型加载失败: {e}")
-    else:
-        logger.info("⏭️  跳过实时标点符号模型加载 (ASR_ENABLE_REALTIME_PUNC=False)")
 
     # 6. 预加载说话人分离模型 (CAM++)
     try:
-        logger.info("📥 正在加载说话人分离模型(CAM++)...")
         from ..utils.speaker_diarizer import get_global_diarization_pipeline
 
         diarization_pipeline = get_global_diarization_pipeline()
 
         if diarization_pipeline:
             result["speaker_diarization_model"]["loaded"] = True
-            logger.info("✅ 说话人分离模型(CAM++)加载成功")
         else:
             result["speaker_diarization_model"]["error"] = "说话人分离模型加载后返回None"
-            logger.warning("⚠️  说话人分离模型(CAM++)加载后返回None")
 
     except Exception as e:
         result["speaker_diarization_model"]["error"] = str(e)
         logger.error(f"❌ 说话人分离模型(CAM++)加载失败: {e}")
-
-    # 打印统计结果到日志
-    print_model_statistics(result, use_logger=True)
 
     return result

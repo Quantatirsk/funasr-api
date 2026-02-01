@@ -268,9 +268,9 @@ check_buildx() {
 build_cpu() {
     local tag="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
 
-    # CPU 版本使用不带 gpu 前缀的标签
+    # CPU 版本默认使用 cpu-latest 标签
     if [ "$VERSION" = "latest" ]; then
-        tag="${REGISTRY}/${IMAGE_NAME}:latest"
+        tag="${REGISTRY}/${IMAGE_NAME}:cpu-latest"
     fi
 
     info "构建 CPU 版本: $tag"
@@ -507,7 +507,7 @@ main() {
         info "推送的多架构镜像信息:"
         if [[ "$BUILD_TYPE" == "cpu" || "$BUILD_TYPE" == "all" ]]; then
             local cpu_tag="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
-            [ "$VERSION" = "latest" ] && cpu_tag="${REGISTRY}/${IMAGE_NAME}:latest"
+            [ "$VERSION" = "latest" ] && cpu_tag="${REGISTRY}/${IMAGE_NAME}:cpu-latest"
             echo "  CPU 镜像: ${CYAN}${cpu_tag}${NC}"
             echo "  查看架构: docker manifest inspect ${cpu_tag} | grep architecture"
         fi

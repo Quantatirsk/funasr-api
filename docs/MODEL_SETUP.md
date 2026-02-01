@@ -1,238 +1,181 @@
 # 模型下载与部署指南
 
-## 架构说明
+本文档说明如何预下载模型以及在内网环境中部署 FunASR-API。
 
-从本版本开始，模型文件与 Docker 镜像分离：
+## 模型存储结构
 
-- **镜像**：只包含代码和依赖（体积小，约 2-3GB）
-- **模型**：通过 Volume 挂载到容器（灵活管理，约 10-20GB）
+FunASR-API 使用以下模型仓库：
 
-### 优势
+| 平台 | 路径 | 用途 |
+|------|------|------|
+| ModelScope | `~/.cache/modelscope/hub/models` | FunASR 模型（Paraformer、VAD、CAM++ 等） |
+| HuggingFace | `~/.cache/huggingface` | Qwen3-ASR 模型（需要 GPU） |
 
-1. **镜像体积小**：无需在每次构建时下载模型
-2. **内网部署友好**：直接复制 `models/` 目录即可
-3. **模型更新方便**：无需重建镜像
-4. **多环境共享**：多个容器可共享同一模型目录
+## 自动下载（推荐）
 
----
+模型会在服务首次启动时自动下载。启动服务后，模型将自动缓存到上述路径。
 
-## 快速开始
+## 手动预下载
 
-### 1. 下载模型到本地
+如需预下载模型（例如内网部署场景），可以使用以下方式：
 
-```bash
-# 在项目根目录执行
-python scripts/download_models.py
+### 1. 使用 ModelScope 下载 FunASR 模型
+
+```python
+# 使用 ModelScope 下载模型
+from modelscope import snapshot_download
+
+# 下载 Paraformer-large 模型
+snapshot_download("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
+
+# 下载 VAD 模型
+snapshot_download("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch")
+
+# 下载标点模型
+snapshot_download("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch")
+
+# 下载实时标点模型
+snapshot_download("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727")
+
+# 下载 CAM++ 说话人分离模型
+snapshot_download("iic/speech_campplus_speaker-diarization_common")
+
+# 下载 N-gram 语言模型
+snapshot_download("iic/speech_ngram_lm_zh-cn-ai-wesp-fst")
 ```
 
-脚本会将模型下载到 `~/.cache/modelscope/`，大约需要 10-20GB 空间。
+### 2. 使用 HuggingFace 下载 Qwen3-ASR 模型
 
-### 2. 创建模型目录软链接（推荐）
+```python
+# 使用 HuggingFace 下载 Qwen3-ASR 模型
+from huggingface_hub import snapshot_download
 
-```bash
-# 在项目根目录创建 models 目录，链接到 ModelScope 缓存
-ln -s ~/.cache/modelscope/hub ./models/hub
+# 下载 Qwen3-ASR 1.7B 模型
+snapshot_download("Qwen/Qwen3-ASR-1.7B")
+
+# 下载 Qwen3-ASR 0.6B 模型
+snapshot_download("Qwen/Qwen3-ASR-0.6B")
 ```
-
-或者直接复制模型文件：
-
-```bash
-# 复制模型到项目目录（适合内网部署）
-mkdir -p ./models/hub
-cp -r ~/.cache/modelscope/hub/models ./models/hub/
-```
-
-### 3. 启动服务
-
-```bash
-docker-compose up -d
-```
-
-容器会自动挂载 `./models` 目录到 `/root/.cache/modelscope`。
-
----
-
-## 目录结构
-
-```
-funasr-api/
-├── models/                    # 模型文件目录（挂载到容器）
-│   ├── hub/                   # ModelScope 模型缓存
-│   │   ├── iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch/
-│   │   └── ...
-│   └── models/                # 备用缓存路径
-├── temp/                      # 临时文件
-├── data/                      # 数据目录
-├── logs/                      # 日志目录
-└── docker-compose.yml
-```
-
----
 
 ## 内网部署
 
-### 方案 1：打包模型目录
-
-在有网络的机器上：
+### 步骤 1: 在外网机器下载模型
 
 ```bash
-# 1. 下载模型（使用模块方式）
-python -m app.utils.download_models
+# 创建模型目录
+mkdir -p models/modelscope models/huggingface
 
-# 2. 打包模型目录（只打包 hub 子目录）
-tar -czf models.tar.gz -C ~/.cache/modelscope hub
+# 使用 Docker 下载模型
+docker run --rm \
+  -v $(pwd)/models/modelscope:/root/.cache/modelscope \
+  -v $(pwd)/models/huggingface:/root/.cache/huggingface \
+  quantatrisk/funasr-api:gpu-latest
+
+# 服务启动后会自动下载模型，等待下载完成后停止容器
 ```
 
-在内网机器上：
+### 步骤 2: 打包模型
 
 ```bash
-# 1. 解压模型（确保路径为 ./models/hub/models/）
-mkdir -p models
-tar -xzf models.tar.gz -C ./models
+# 打包模型目录
+tar -czvf funasr-models.tar.gz models/
 
-# 验证目录结构
-ls ./models/hub/models/iic/  # 应该能看到 speech_paraformer-large 等目录
-
-# 2. 拉取镜像（通过 Docker 镜像仓库或离线导入）
-docker pull quantatrisk/funasr-api:gpu-latest
-
-# 3. 启动服务
-docker-compose up -d
+# 传输到内网机器
+scp funasr-models.tar.gz user@internal-server:/path/to/deploy/
 ```
 
-### 方案 2：使用 NFS/共享存储
+### 步骤 3: 内网机器部署
 
-多台机器共享同一个模型目录：
+```bash
+# 在内网机器解压模型
+cd /path/to/deploy/
+tar -xzvf funasr-models.tar.gz
+
+# 启动服务（使用本地模型）
+docker run -d --name funasr-api \
+  --gpus all \
+  -p 17003:8000 \
+  -v ./models/modelscope:/root/.cache/modelscope \
+  -v ./models/huggingface:/root/.cache/huggingface \
+  -v ./logs:/app/logs \
+  -v ./temp:/app/temp \
+  -e DEVICE=auto \
+  -e MODELSCOPE_PATH=/root/.cache/modelscope/hub/models \
+  -e HF_HOME=/root/.cache/huggingface \
+  quantatrisk/funasr-api:gpu-latest
+```
+
+## Docker Compose 内网部署
 
 ```yaml
-# docker-compose.yml
-volumes:
-  - /mnt/shared/modelscope:/root/.cache/modelscope  # NFS 挂载点
+services:
+  funasr-api:
+    image: quantatrisk/funasr-api:gpu-latest
+    container_name: funasr-api
+    ports:
+      - "17003:8000"
+    volumes:
+      # 挂载预下载的模型
+      - ./models/modelscope:/root/.cache/modelscope
+      - ./models/huggingface:/root/.cache/huggingface
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - DEVICE=auto
+      # 显式设置模型缓存路径
+      - MODELSCOPE_PATH=/root/.cache/modelscope/hub/models
+      - HF_HOME=/root/.cache/huggingface
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 ```
 
----
+## 模型路径映射说明
 
-## 模型列表
+### 挂载方案 1: 项目本地目录（推荐）
 
-当前支持的模型（约 15GB）：
-
-| 模型 | 用途 | 大小 |
-|------|------|------|
-| Qwen3-ASR-1.7B | 离线 ASR（默认，52种语言+字级时间戳） | ~4GB |
-| Paraformer Large (VAD+PUNC) | 高精度中文 ASR | ~2GB |
-| Paraformer Large Online | 实时 ASR | ~2GB |
-| FSMN VAD | 语音活动检测 | ~50MB |
-| CAM++ | 说话人分离 | ~500MB |
-| CT-Transformer | 标点符号 | ~500MB |
-| N-gram LM | 语言模型 | ~8GB |
-
----
-
-## 常见问题
-
-### Q: 如何验证模型是否正确挂载？
-
-```bash
-# 进入容器检查
-docker exec -it funasr-api ls -lh /root/.cache/modelscope/hub
-```
-
-应该能看到模型目录列表。
-
-### Q: 模型下载失败怎么办？
-
-```bash
-# 设置 ModelScope 镜像（如果官方源慢）
-export MODELSCOPE_CACHE=~/.cache/modelscope
-python scripts/download_models.py
-```
-
-### Q: 如何只下载部分模型？
-
-编辑 `scripts/download_models.py`，注释掉不需要的模型：
-
-```python
-models = [
-    # ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large"),
-]
-```
-
-### Q: 容器启动报错找不到模型？
-
-检查挂载路径是否正确：
-
-```bash
-# 确保 models 目录存在且有内容
-ls -lh ./models/hub
-
-# 检查 docker-compose.yml 中的挂载配置
-grep -A 5 "volumes:" docker-compose.yml
-```
-
----
-
-## 升级说明
-
-### 从旧版本（模型内置镜像）迁移
-
-1. **导出现有模型**（可选）：
-
-```bash
-# 从旧容器中导出模型
-docker cp funasr-api:/root/.cache/modelscope ./models
-```
-
-2. **更新镜像**：
-
-```bash
-docker-compose pull
-docker-compose up -d
-```
-
-3. **验证**：
-
-```bash
-# 检查容器日志
-docker-compose logs -f funasr-api
-```
-
----
-
-## 性能优化
-
-### 使用 SSD 存储模型
-
-模型加载速度取决于磁盘 I/O，建议：
-
-- 将 `models/` 目录放在 SSD 上
-- 避免使用网络存储（NFS）作为主存储
-
-### 预热模型
-
-首次启动时，模型会被加载到内存/显存，可能需要 30-60 秒。
-
----
-
-## 技术细节
-
-### 环境变量
-
-容器内模型路径为 `/root/.cache/modelscope/hub/models/`，与挂载的 `./models/hub/models/` 对应。
-
-### 模型加载流程
-
-1. 应用启动时，`ASRManager` 读取 `models.json`
-2. 通过 `LoaderFactory` 创建对应的加载器
-3. 加载器从 `MODELSCOPE_CACHE` 路径加载模型
-4. 模型被加载到内存/显存，准备推理
-
-### 自定义模型路径
-
-如果需要使用其他路径，修改 `docker-compose.yml`：
+将模型与项目放在一起，便于备份和迁移：
 
 ```yaml
-environment:
-  - MODELSCOPE_CACHE=/custom/path
 volumes:
-  - /host/custom/path:/custom/path
+  - ./models/modelscope:/root/.cache/modelscope
+  - ./models/huggingface:/root/.cache/huggingface
 ```
+
+### 挂载方案 2: 用户级缓存目录
+
+多项目共享模型，节省磁盘空间：
+
+```yaml
+volumes:
+  - ~/.cache/modelscope:/root/.cache/modelscope
+  - ~/.cache/huggingface:/root/.cache/huggingface
+```
+
+## 验证模型加载
+
+启动服务后，可以通过以下方式验证模型是否正确加载：
+
+```bash
+# 查看模型列表
+curl http://localhost:17003/stream/v1/asr/models
+
+# 查看服务日志
+docker logs funasr-api | grep -E "模型|加载|model"
+```
+
+## 故障排除
+
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| 模型下载失败 | 网络问题 | 检查网络连接，或手动下载后挂载 |
+| 模型加载失败 | 路径错误 | 检查挂载路径和 MODELSCOPE_PATH/HF_HOME 环境变量 |
+| 显存不足 | GPU 显存不够 | 切换到 CPU 版本或更小的模型 |
+| 权限错误 | 文件权限 | 检查模型目录的读写权限 |

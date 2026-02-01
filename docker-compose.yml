@@ -33,6 +33,9 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - DEVICE=cuda:0
+      # 显式设置模型缓存路径，确保宿主机挂载和容器内路径一致
+      - MODELSCOPE_PATH=/root/.cache/modelscope/hub/models
+      - HF_HOME=/root/.cache/huggingface
       # Qwen3-ASR 模型选择: auto (自动检测显存), Qwen3-ASR-1.7B, Qwen3-ASR-0.6B
       # - QWEN_ASR_MODEL=auto
       # 流式 VLLM 实例控制: false (默认，只加载非流式，节省显存), true (同时加载流式实例)

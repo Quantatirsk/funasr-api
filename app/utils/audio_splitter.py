@@ -59,25 +59,30 @@ class AudioSplitter:
     # 默认配置
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
+    DEFAULT_MAX_SILENCE_SEC = 3.0  # 合并时最大允许的静音间隙（秒）
 
     def __init__(
         self,
         min_segment_sec: float = DEFAULT_MIN_SEGMENT_SEC,
         device: str = "auto",
+        max_silence_sec: float = DEFAULT_MAX_SILENCE_SEC,
     ):
         """初始化音频分割器
 
         Args:
             min_segment_sec: 每段最小时长（秒）
             device: 计算设备（"cuda", "cpu", "auto"）
+            max_silence_sec: 合并时最大允许的静音间隙（秒），超过此值会强制切分
         """
         # 从统一配置读取最大片段时长
         max_segment_sec = settings.MAX_SEGMENT_SEC
 
         self.max_segment_sec = max_segment_sec
         self.min_segment_sec = min_segment_sec
+        self.max_silence_sec = max_silence_sec
         self.max_segment_ms = int(max_segment_sec * 1000)
         self.min_segment_ms = int(min_segment_sec * 1000)
+        self.max_silence_ms = int(max_silence_sec * 1000)
         self.device = device
 
     def get_vad_segments(
@@ -115,7 +120,7 @@ class AudioSplitter:
                 return []
 
             logger.info(f"VAD 检测到 {len(vad_segments)} 个语音段")
-            logger.info("开始贪婪合并语音段...")
+            logger.info(f"开始贪婪合并语音段 (max_segment={self.max_segment_sec}s, max_silence={self.max_silence_sec}s)...")
             return [(int(seg[0]), int(seg[1])) for seg in vad_segments]
 
         except Exception as e:
@@ -130,7 +135,8 @@ class AudioSplitter:
         算法思路：
         1. 从头开始累积 VAD 段
         2. 当累积时长接近但不超过 max_segment_ms 时，在当前 VAD 段的结束位置切分
-        3. 重复直到所有 VAD 段都被处理
+        3. 如果两个 VAD 段之间的静音间隙超过 max_silence_ms，强制切分（避免包含过长静音）
+        4. 重复直到所有 VAD 段都被处理
 
         Args:
             vad_segments: VAD 检测到的语音段列表 [(start_ms, end_ms), ...]
@@ -147,28 +153,31 @@ class AudioSplitter:
         # 按时间排序，从第一个 VAD 段的开始时间开始
         sorted_vad = sorted(vad_segments, key=lambda x: x[0])
         current_start = sorted_vad[0][0]
+        prev_end = current_start  # 上一段的结束时间
         i = 0
 
         while i < len(sorted_vad):
             seg_start, seg_end = sorted_vad[i]
 
+            # 计算与前一段的静音间隙
+            silence_gap = seg_start - prev_end
+
             # 计算如果包含当前段，总时长是多少
             potential_end = seg_end
             potential_duration = potential_end - current_start
 
-            if potential_duration <= self.max_segment_ms:
-                # 可以包含当前段，继续看下一段
-                i += 1
+            # 检查是否需要强制切分（超过最大时长 或 静音间隙太长）
+            force_split = potential_duration > self.max_segment_ms
+            silence_split = silence_gap > self.max_silence_ms and (prev_end - current_start) >= self.min_segment_ms
 
-                # 如果是最后一段，结束
-                if i >= len(sorted_vad):
-                    # 使用最后一个 VAD 段的结束位置，或音频总时长
-                    final_end = min(seg_end, total_duration_ms)
-                    if final_end > current_start:
-                        merged.append((current_start, final_end))
-            else:
-                # 包含当前段会超过限制
-                if i == 0 or (merged == [] and current_start == 0):
+            if force_split or silence_split:
+                if silence_split and not force_split:
+                    # 静音间隙太长，在当前段开始前切分
+                    logger.debug(f"静音间隙 {silence_gap/1000:.1f}s 超过阈值 {self.max_silence_sec}s，强制切分")
+                    merged.append((current_start, prev_end))
+                    current_start = seg_start
+                    # 不增加 i，重新评估当前段
+                elif i == 0 or (merged == [] and current_start == sorted_vad[0][0]):
                     # 第一段就超过限制，需要在这段内部切分
                     # 先保存到当前段开始前的内容（如果有的话）
                     if seg_start > current_start and seg_start - current_start >= self.min_segment_ms:
@@ -183,13 +192,13 @@ class AudioSplitter:
 
                     # 剩余部分作为下一段的开始
                     i += 1
+                    prev_end = seg_end
                     if i >= len(sorted_vad):
                         # 这是最后一段，保存剩余部分
                         if seg_end > current_start:
                             merged.append((current_start, seg_end))
                 else:
                     # 不是第一段，在上一段结束处切分
-                    prev_end = sorted_vad[i - 1][1]
                     if prev_end > current_start:
                         merged.append((current_start, prev_end))
                         current_start = prev_end
@@ -208,8 +217,20 @@ class AudioSplitter:
                             current_start = cut_point
 
                         i += 1
+                        prev_end = seg_end
                         if i >= len(vad_segments) and seg_end > current_start:
                             merged.append((current_start, seg_end))
+            else:
+                # 可以包含当前段，继续看下一段
+                prev_end = seg_end
+                i += 1
+
+                # 如果是最后一段，结束
+                if i >= len(sorted_vad):
+                    # 使用最后一个 VAD 段的结束位置，或音频总时长
+                    final_end = min(seg_end, total_duration_ms)
+                    if final_end > current_start:
+                        merged.append((current_start, final_end))
 
         # 处理末尾：如果音频末尾还有内容
         if merged:

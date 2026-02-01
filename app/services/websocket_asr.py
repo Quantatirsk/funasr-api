@@ -301,10 +301,16 @@ class AliyunWebSocketASRService:
 
                             audio_buffer = np.concatenate([audio_buffer, incoming_audio])
 
-                            logger.debug(
-                                f"[{task_id}] 收到音频 {len(incoming_audio)} samples, "
-                                f"缓冲区共 {len(audio_buffer)} samples"
-                            )
+                            # 采样打印：每10次打印一次，避免高频日志
+                            if hasattr(self, '_audio_receive_counter'):
+                                self._audio_receive_counter += 1
+                            else:
+                                self._audio_receive_counter = 1
+                            if self._audio_receive_counter % 10 == 1:
+                                logger.debug(
+                                    f"[{task_id}] 收到音频 {len(incoming_audio)} samples, "
+                                    f"缓冲区共 {len(audio_buffer)} samples"
+                                )
 
                             # 定义标准chunk大小（支持多种，对应不同的chunk_stride）
                             # 3840 samples = 240ms @ 16kHz (chunk_stride=4, 低延迟)
@@ -319,12 +325,8 @@ class AliyunWebSocketASRService:
                                     selected_chunk_size = chunk_size
                                     break
 
-                            # 如果缓冲区不足最小chunk，跳过本次处理
+                            # 如果缓冲区不足最小chunk，跳过本次处理（不打印日志，避免高频噪音）
                             if selected_chunk_size is None:
-                                logger.debug(
-                                    f"[{task_id}] 缓冲区不足，等待更多数据 "
-                                    f"(当前{len(audio_buffer)}, 需要至少{min(standard_chunk_sizes)})"
-                                )
                                 continue
 
                             # 处理缓冲区中所有完整的chunk
