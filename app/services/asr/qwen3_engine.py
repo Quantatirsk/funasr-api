@@ -575,7 +575,6 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
         return model_id
 
     from pathlib import Path
-    import hashlib
 
     # ModelScope 缓存路径
     ms_cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
