@@ -13,7 +13,6 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/funasr-api
 
 jobs:
   build-cpu:
@@ -22,6 +21,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/funasr-api
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,17 +42,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch,suffix=-cpu
-            type=semver,pattern={{version}},suffix=-cpu
-            type=semver,pattern={{major}}.{{minor}},suffix=-cpu
-            type=raw,value=cpu-latest,enable=${{ github.ref == 'refs/heads/main' }}
-
       - name: Build and push CPU image
         uses: docker/build-push-action@v5
         with:
@@ -59,8 +49,7 @@ jobs:
           file: ./Dockerfile.cpu
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cpu-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -70,6 +59,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/funasr-api
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -84,18 +75,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch,suffix=-gpu
-            type=semver,pattern={{version}},suffix=-gpu
-            type=semver,pattern={{major}}.{{minor}},suffix=-gpu
-            type=raw,value=gpu-latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
       - name: Build and push GPU image
         uses: docker/build-push-action@v5
         with:
@@ -103,7 +82,8 @@ jobs:
           file: ./Dockerfile.gpu
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:gpu-latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
