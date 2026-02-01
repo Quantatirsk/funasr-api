@@ -12,6 +12,47 @@ from ...models.common import SampleRate, AudioFormat
 from ...core.config import settings
 
 
+def _detect_qwen_model_by_vram() -> str:
+    """根据显存检测应该使用哪个 Qwen 模型
+
+    < 48GB 用 0.6b, >= 48GB 用 1.7b
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return "qwen3-asr-0.6b"
+
+        # 获取最小显存（多卡情况下）
+        gpu_count = torch.cuda.device_count()
+        min_vram = float('inf')
+        for i in range(gpu_count):
+            vram = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+            min_vram = min(min_vram, vram)
+
+        if min_vram >= 48:
+            return "qwen3-asr-1.7b"
+        else:
+            return "qwen3-asr-0.6b"
+    except Exception:
+        return "qwen3-asr-0.6b"
+
+
+def _get_active_qwen_model() -> str:
+    """获取当前激活的 Qwen 模型
+
+    根据 QWEN_ASR_MODEL 环境变量或显存自动检测
+    """
+    model_config = settings.QWEN_ASR_MODEL
+
+    if model_config == "Qwen3-ASR-1.7B":
+        return "qwen3-asr-1.7b"
+    elif model_config == "Qwen3-ASR-0.6B":
+        return "qwen3-asr-0.6b"
+    else:  # auto
+        return _detect_qwen_model_by_vram()
+
+
 def _load_supported_models() -> List[str]:
     """从 models.json 加载支持的模型列表"""
     try:
@@ -26,30 +67,34 @@ def _load_supported_models() -> List[str]:
     return ["qwen3-asr-1.7b", "paraformer-large"]
 
 
+def _get_dynamic_model_list() -> List[str]:
+    """获取动态的模型列表（根据显存配置）
+
+    返回的列表中，Qwen 模型在前，Paraformer 在后
+    且只返回当前显存配置下可用的 Qwen 模型
+    """
+    active_qwen = _get_active_qwen_model()
+
+    # Qwen 模型在前，按显存配置只返回可用的那个
+    models = [active_qwen]
+
+    # Paraformer 在后
+    if "paraformer-large" in _load_supported_models():
+        models.append("paraformer-large")
+
+    return models
+
+
 def _get_default_model() -> str:
-    """从 models.json 获取默认模型"""
-    try:
-        models_file = Path(settings.ASR_MODELS_CONFIG)
-        if models_file.exists():
-            with open(models_file, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            models = config.get("models", {})
-            # 找到标记为 default 的模型
-            for model_id, model_config in models.items():
-                if model_config.get("default", False):
-                    return model_id
-            # 如果没有标记默认的，返回第一个
-            if models:
-                return list(models.keys())[0]
-    except Exception:
-        pass
-    return "qwen3-asr-1.7b"
+    """获取默认模型（根据显存配置）"""
+    return _get_active_qwen_model()
 
 
 class AudioParamsValidator:
     """音频参数验证器 - 统一验证ASR相关参数"""
 
-    # 支持的模型ID（动态加载）
+    # 支持的模型ID（动态加载，根据显存配置）
+    # 使用 _get_dynamic_model_list() 获取当前可用的模型列表
     SUPPORTED_MODELS = _load_supported_models()
 
     # 支持的音频格式

@@ -49,39 +49,22 @@ router = APIRouter(prefix="/stream/v1", tags=["ASR"])
 
 
 def _get_model_schema() -> dict:
-    """从 models.json 获取动态的模型 schema"""
+    """获取动态的模型 schema（根据显存配置）"""
+    from ...services.asr.validators import _get_dynamic_model_list, _get_default_model
+
     try:
-        import json
-        from pathlib import Path
+        model_ids = _get_dynamic_model_list()
+        default_model = _get_default_model()
 
-        models_file = Path(settings.ASR_MODELS_CONFIG)
-        if models_file.exists():
-            with open(models_file, "r", encoding="utf-8") as f:
-                config = json.load(f)
-
-            models = config.get("models", {})
-            model_ids = list(models.keys())
-
-            # 找到默认模型
-            default_model = None
-            for model_id, model_config in models.items():
-                if model_config.get("default", False):
-                    default_model = model_id
-                    break
-
-            # 如果没有标记默认的，使用第一个
-            if not default_model and model_ids:
-                default_model = model_ids[0]
-
-            return {
-                "type": "string",
-                "maxLength": 64,
-                "default": default_model or "qwen3-asr-1.7b",
-                "enum": model_ids,
-                "example": default_model or "qwen3-asr-1.7b",
-            }
+        return {
+            "type": "string",
+            "maxLength": 64,
+            "default": default_model,
+            "enum": model_ids,
+            "example": default_model,
+        }
     except Exception as e:
-        logger.warning(f"Failed to load model schema from config: {e}")
+        logger.warning(f"Failed to load dynamic model schema: {e}")
 
     # Fallback: 使用硬编码的默认值
     return {
@@ -96,9 +79,18 @@ def _get_model_schema() -> dict:
 def update_openapi_schema():
     """在应用启动时更新 OpenAPI schema，使其包含正确的模型列表"""
     from fastapi.routing import APIRoute
+    from ...services.asr.validators import _get_dynamic_model_list, _get_default_model
 
     model_schema = _get_model_schema()
-    default_model = model_schema.get("default", "qwen3-asr-1.7b")
+    default_model = _get_default_model()
+    available_models = _get_dynamic_model_list()
+
+    # 构建模型描述
+    model_descriptions = {
+        "qwen3-asr-1.7b": "Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能（离线）",
+        "qwen3-asr-0.6b": "Qwen3-ASR 0.6B，轻量版多语言，适合小显存（离线）",
+        "paraformer-large": "高精度中文语音识别，内置VAD+标点（离线/实时）",
+    }
 
     # 找到 asr_transcribe 路由并更新其 openapi_extra
     for route in router.routes:
@@ -108,11 +100,28 @@ def update_openapi_schema():
                 for param in params:
                     if param.get("name") == "model_id":
                         param["schema"] = model_schema
-                        param["description"] = f"ASR 模型 ID。可选值：{', '.join(model_schema['enum'])}（默认：{default_model}）"
-                # 同时更新 description 中的模型说明
-                route.description = route.description.replace(
-                    "- **qwen3-asr-1.7b**（默认）",
-                    f"- **{default_model}**（默认）"
+                        # 构建动态描述
+                        model_list_desc = ", ".join(
+                            f"{m}（{model_descriptions.get(m, '')}）" for m in available_models
+                        )
+                        param["description"] = f"ASR 模型 ID。可选值：{model_list_desc}。默认：{default_model}"
+
+                # 更新 description 中的可用模型说明
+                # 重新构建模型列表部分
+                models_section = "## 可用模型\n"
+                for m in available_models:
+                    desc = model_descriptions.get(m, "")
+                    if m == default_model:
+                        models_section += f"- **{m}**（默认）：{desc}\n"
+                    else:
+                        models_section += f"- **{m}**：{desc}\n"
+
+                # 替换原有的模型说明部分
+                import re
+                route.description = re.sub(
+                    r"## 可用模型\n(- \*\*.+\*\*.+\n)+",
+                    models_section,
+                    route.description
                 )
             break
 

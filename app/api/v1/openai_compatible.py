@@ -22,7 +22,7 @@ from ...core.exceptions import (
     create_error_response,
 )
 from ...services.asr.manager import get_model_manager
-from ...services.asr.validators import AudioParamsValidator
+from ...services.asr.validators import AudioParamsValidator, _get_default_model, _get_dynamic_model_list
 from ...services.audio import get_audio_service
 
 logger = logging.getLogger(__name__)
@@ -162,25 +162,45 @@ def map_model_id(model: str) -> Optional[str]:
 
 # ============= API 端点 =============
 
-@router.get(
-    "/models",
-    response_model=ModelsResponse,
-    summary="列出可用模型",
-    description=f"""返回当前可用的 ASR 模型列表（OpenAI `/v1/models` 兼容）。
+def _get_openai_model_description() -> str:
+    """获取动态的模型描述"""
+    available_models = _get_dynamic_model_list()
+    default_model = _get_default_model()
+
+    model_descriptions = {
+        "qwen3-asr-1.7b": "Qwen3-ASR 1.7B，52 种语言，vLLM 高性能",
+        "qwen3-asr-0.6b": "Qwen3-ASR 0.6B，轻量版，适合小显存环境",
+        "paraformer-large": "高精度中文 ASR，内置 VAD+标点",
+    }
+
+    # 构建表格行
+    table_rows = []
+    for m in available_models:
+        desc = model_descriptions.get(m, "")
+        if m == default_model:
+            desc += "（默认）"
+        table_rows.append(f"| `{m}` | {desc} |")
+
+    return f"""返回当前可用的 ASR 模型列表（OpenAI `/v1/models` 兼容）。
 
 **可用模型：**
 
 | 模型 ID | 说明 |
 |---------|------|
-| `qwen3-asr-1.7b` | Qwen3-ASR 1.7B，52 种语言，vLLM 高性能（默认） |
-| `qwen3-asr-0.6b` | Qwen3-ASR 0.6B，轻量版，适合小显存环境 |
-| `paraformer-large` | 高精度中文 ASR，内置 VAD+标点 |
-
+{chr(10).join(table_rows)}
 
 **兼容性说明：**
 - `whisper-1` 等 OpenAI 模型 ID 会自动映射到默认模型
 - 支持 OpenAI SDK 和第三方客户端调用
-""",
+- 当前默认模型根据显存自动选择：<48GB 用 0.6b，>=48GB 用 1.7b
+"""
+
+
+@router.get(
+    "/models",
+    response_model=ModelsResponse,
+    summary="列出可用模型",
+    description=_get_openai_model_description(),
 )
 async def list_models(request: Request):
     """列出可用模型 (OpenAI 兼容)"""
@@ -194,13 +214,13 @@ async def list_models(request: Request):
         return JSONResponse(content=response_data, status_code=401)
 
     try:
-        model_manager = get_model_manager()
-        models = model_manager.list_models()
+        # 使用动态模型列表
+        model_ids = _get_dynamic_model_list()
 
         model_objects = []
-        for m in models:
+        for model_id in model_ids:
             model_objects.append(ModelObject(
-                id=m["id"],
+                id=model_id,
                 owned_by="funasr-api",
             ))
 
@@ -210,10 +230,24 @@ async def list_models(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/audio/transcriptions",
-    summary="音频转写",
-    description="""将音频文件转写为文本（完全兼容 OpenAI Audio API）。
+def _get_transcription_description() -> str:
+    """获取动态的转写端点描述"""
+    available_models = _get_dynamic_model_list()
+    default_model = _get_default_model()
+
+    model_descriptions = {
+        "qwen3-asr-1.7b": "Qwen3-ASR 1.7B，52种语言，vLLM高性能",
+        "qwen3-asr-0.6b": "Qwen3-ASR 0.6B，轻量版，适合小显存",
+        "paraformer-large": "高精度中文 ASR",
+    }
+
+    # 构建模型映射部分
+    model_mapping_lines = [f"- `whisper-1` → 使用默认模型 ({default_model})"]
+    for m in available_models:
+        desc = model_descriptions.get(m, "")
+        model_mapping_lines.append(f"- `{m}` → {desc}")
+
+    return f"""将音频文件转写为文本（完全兼容 OpenAI Audio API）。
 
 **支持的音频格式：**
 `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`, `flac`, `ogg`, `amr`, `pcm`
@@ -237,14 +271,17 @@ async def list_models(request: Request):
 | `vtt` | text/vtt | WebVTT 字幕格式 |
 
 **模型映射：**
-- `whisper-1` → 使用默认模型 (qwen3-asr-1.7b)
-- `qwen3-asr-1.7b` → Qwen3-ASR 1.7B，52种语言，vLLM高性能
-- `qwen3-asr-0.6b` → Qwen3-ASR 0.6B，轻量版，适合小显存
-- `paraformer-large` → 高精度中文 ASR
+{chr(10).join(model_mapping_lines)}
 
 **暂不支持的参数：**
 `prompt`、`temperature`、`timestamp_granularities` 参数已保留但暂不生效
-""",
+"""
+
+
+@router.post(
+    "/audio/transcriptions",
+    summary="音频转写",
+    description=_get_transcription_description(),
     responses={
         200: {
             "description": "转写成功",
@@ -296,7 +333,7 @@ async def create_transcription(
     ),
     # 2. 核心参数
     model: str = Form(
-        "qwen3-asr-1.7b",
+        default_factory=_get_default_model,
         description="ASR 模型选择。可用模型通过 /v1/models 端点获取",
     ),
     # 3. 音频属性
