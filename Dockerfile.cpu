@@ -4,7 +4,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
-    HF_HUB_DISABLE_PROGRESS_BARS=1
+    HF_HUB_DISABLE_PROGRESS_BARS=1 \
+    PATH=/opt/venv/bin:$PATH \
+    VIRTUAL_ENV=/opt/venv
 
 # Install system packages required for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,12 +19,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# Create virtual environment
+RUN uv venv /opt/venv
+
 # Pre-install PyTorch CPU wheels to avoid pulling CUDA runtimes
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir \
+RUN uv pip install --no-cache \
         --index-url https://download.pytorch.org/whl/cpu \
         torch==2.3.1 \
-        torchaudio==2.3.1
+        torchaudio==2.3.1 \
+        --python /opt/venv/bin/python
 
 # Install Rust compiler (required for sudachipy on ARM64)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -30,7 +38,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN uv pip install --no-cache -r /tmp/requirements.txt --python /opt/venv/bin/python
 
 # Clean build tools and cache to reduce image size
 RUN apt remove -y build-essential curl && apt autoremove -y \
@@ -46,4 +54,4 @@ RUN mkdir -p /app/temp /app/data /app/logs \
 
 EXPOSE 8000
 
-CMD ["python", "start.py"]
+CMD ["/opt/venv/bin/python", "start.py"]
