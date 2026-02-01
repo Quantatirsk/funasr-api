@@ -559,10 +559,11 @@ def _register_qwen3_engine(register_func, model_config_cls):
 
 
 def _ensure_model_in_hf_cache(model_id: str) -> str:
-    """确保模型可以被 vLLM 找到
+    """确保模型在 HuggingFace 缓存格式中（从 ModelScope 创建符号链接）
 
-    通过设置 HF_HOME 环境变量为 ModelScope 缓存路径，
-    让 vLLM 直接从 ModelScope 缓存加载模型。
+    vLLM 需要 HuggingFace 格式的缓存结构：
+    - HF: ~/.cache/huggingface/hub/models--{org}--{model}/snapshots/{hash}/
+    - MS: ~/.cache/modelscope/hub/models/{model_id}/
 
     Args:
         model_id: 模型 ID（如 "Qwen/Qwen3-ASR-0.6B"）
@@ -578,16 +579,49 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
     # ModelScope 缓存路径
     ms_cache_path = Path.home() / ".cache" / "modelscope" / "hub" / "models" / model_id
 
-    # 检查 ModelScope 缓存是否存在
     if not ms_cache_path.exists():
         logger.warning(f"模型 {model_id} 本地缓存不存在，将尝试在线下载")
         return model_id
 
-    # 设置环境变量让 HF/vLLM 从 ModelScope 缓存加载
-    # HF_HOME 指向 modelscope 缓存目录的父目录
-    ms_hub_path = str(Path.home() / ".cache" / "modelscope" / "hub")
-    os.environ["HF_HOME"] = ms_hub_path
-    os.environ["HUGGINGFACE_HUB_CACHE"] = ms_hub_path
-    logger.info(f"设置 HF_HOME={ms_hub_path}，让 vLLM 从 ModelScope 缓存加载模型")
+    # HuggingFace 缓存路径
+    parts = model_id.split("/")
+    if len(parts) != 2:
+        return model_id
+
+    org, model = parts
+    hf_cache_name = f"models--{org}--{model}"
+    hf_cache_path = Path.home() / ".cache" / "huggingface" / "hub" / hf_cache_name
+
+    # 如果 HF 缓存已存在，无需处理
+    if hf_cache_path.exists():
+        return model_id
+
+    # 创建 HF 格式的符号链接
+    logger.info(f"创建 HF 缓存符号链接: {model_id}")
+    try:
+        hf_cache_path.mkdir(parents=True, exist_ok=True)
+
+        # 创建 snapshots 目录
+        snapshots_path = hf_cache_path / "snapshots"
+        snapshots_path.mkdir(exist_ok=True)
+
+        # 使用固定 hash（model_id 的 hash）
+        import hashlib
+        snapshot_hash = hashlib.sha256(model_id.encode()).hexdigest()[:12]
+        snapshot_path = snapshots_path / snapshot_hash
+
+        # 创建符号链接指向 ModelScope 缓存
+        if not snapshot_path.exists():
+            snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
+
+        # 创建 refs/main 指向该 hash
+        refs_path = hf_cache_path / "refs"
+        refs_path.mkdir(exist_ok=True)
+        (refs_path / "main").write_text(snapshot_hash)
+
+        logger.info(f"HF 缓存符号链接创建完成: {snapshot_path} -> {ms_cache_path}")
+
+    except Exception as e:
+        logger.error(f"创建 HF 缓存符号链接失败: {e}")
 
     return model_id
