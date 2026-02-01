@@ -30,7 +30,7 @@ services:
       - PORT=8000
       - DEVICE=cuda:0
       # Qwen3-ASR 模型选择: auto (自动检测显存), Qwen3-ASR-1.7B, Qwen3-ASR-0.6B
-      - QWEN_ASR_MODEL=auto
+      # - QWEN_ASR_MODEL=auto
       - NVIDIA_VISIBLE_DEVICES=0
       # 多进程会复制模型、显存成倍增加；离线长音频建议保持 1
       - WORKERS=1

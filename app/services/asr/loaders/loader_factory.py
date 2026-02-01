@@ -9,7 +9,6 @@ from typing import Dict, Optional, Type
 
 from .base_loader import BaseModelLoader
 from .paraformer_loader import ParaformerModelLoader
-from .qwen3_loader import Qwen3ModelLoader
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class ModelLoaderFactory:
     # 模型类型到加载器的映射
     _LOADER_REGISTRY: Dict[str, Type[BaseModelLoader]] = {
         "paraformer": ParaformerModelLoader,
-        "qwen3": Qwen3ModelLoader,
     }
 
     @classmethod
@@ -78,15 +76,6 @@ class ModelLoaderFactory:
 
         根据模型路径和额外参数识别模型类型
         """
-        # 根据模型路径特征识别 Qwen3
-        model_id = model_path.lower()
-        if "qwen3-asr" in model_id or "qwen3" in model_id:
-            return "qwen3"
-
-        # 根据 extra_kwargs 中的 forced_aligner_path 识别（Qwen3 特有）
-        if extra_kwargs.get("forced_aligner_path"):
-            return "qwen3"
-
         # 默认使用传统 Paraformer 模型
         return "paraformer"
 
