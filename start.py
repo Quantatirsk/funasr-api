@@ -6,8 +6,7 @@ import sys
 import os
 
 # 强制离线模式，必须在任何 HF/transformers 导入前设置
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# 注意：不要设置 HF_HUB_OFFLINE=1，否则 vLLM 会把 model_id 替换为绝对路径
 os.environ.setdefault("HF_HUB_LOCAL_FILES_ONLY", "1")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

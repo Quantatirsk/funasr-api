@@ -599,8 +599,8 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
         if refs_main.exists():
             return model_id
 
-    # 创建 HF 格式的符号链接
-    logger.info(f"创建 HF 缓存符号链接: {model_id}")
+    # 创建或修复 HF 格式的符号链接
+    logger.info(f"检查 HF 缓存: {model_id}")
     try:
         hf_cache_path.mkdir(parents=True, exist_ok=True)
 
@@ -608,28 +608,43 @@ def _ensure_model_in_hf_cache(model_id: str) -> str:
         snapshots_path = hf_cache_path / "snapshots"
         snapshots_path.mkdir(exist_ok=True)
 
-        # 使用 'main' 作为 snapshot 名称（简单方案）
-        snapshot_path = snapshots_path / "main"
+        # 检查是否已有 snapshot
+        existing_snapshot = None
+        for item in snapshots_path.iterdir():
+            if item.is_dir() or item.is_symlink():
+                existing_snapshot = item.name
+                break
 
-        # 如果已存在但不是符号链接，删除它
-        if snapshot_path.exists() or snapshot_path.is_symlink():
+        if existing_snapshot:
+            # 使用现有的 snapshot 名称
+            snapshot_path = snapshots_path / existing_snapshot
+            # 检查是否是有效的符号链接
             if snapshot_path.is_symlink():
-                snapshot_path.unlink()
-            elif snapshot_path.is_dir():
+                current_target = snapshot_path.readlink()
+                if str(current_target) != str(ms_cache_path):
+                    # 链接指向错误位置，重新创建
+                    snapshot_path.unlink()
+                    snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
+                    logger.info(f"更新符号链接: {snapshot_path} -> {ms_cache_path}")
+            elif not list(snapshot_path.iterdir()):
+                # 空目录，删除并创建符号链接
                 import shutil
                 shutil.rmtree(snapshot_path)
-            else:
-                snapshot_path.unlink()
+                snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
+                logger.info(f"创建符号链接: {snapshot_path} -> {ms_cache_path}")
+        else:
+            # 创建新的 snapshot，使用 'main' 作为名称
+            snapshot_path = snapshots_path / "main"
+            snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
+            existing_snapshot = "main"
+            logger.info(f"创建符号链接: {snapshot_path} -> {ms_cache_path}")
 
-        # 创建符号链接指向 ModelScope 缓存
-        snapshot_path.symlink_to(ms_cache_path, target_is_directory=True)
-
-        # 创建 refs/main 指向 'main'
+        # 更新或创建 refs/main
         refs_path = hf_cache_path / "refs"
         refs_path.mkdir(exist_ok=True)
-        (refs_path / "main").write_text("main")
+        (refs_path / "main").write_text(existing_snapshot)
 
-        logger.info(f"HF 缓存符号链接创建完成: {snapshot_path} -> {ms_cache_path}")
+        logger.info(f"HF 缓存准备完成，使用 snapshot: {existing_snapshot}")
 
     except Exception as e:
         logger.error(f"创建 HF 缓存符号链接失败: {e}")
