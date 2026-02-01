@@ -17,6 +17,7 @@ import numpy as np
 # 强制离线模式，禁止访问 HuggingFace Hub，确保本地模型优先
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_LOCAL_FILES_ONLY", "1")
 
 from .engines import BaseASREngine, ASRRawResult, ASRSegmentResult, ASRFullResult, WordToken
 from ...core.config import settings
