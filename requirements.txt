@@ -1,9 +1,6 @@
-# FastAPI: 与 vLLM 兼容，允许 0.115.0-0.128.x
-fastapi>=0.115.0,<0.130.0
+fastapi==0.128.0
 fastapi-offline==1.7.6
-uvicorn[standard]==0.34.0
-
-# Pydantic: 明确使用 v2（vLLM 要求 >=2.12.0）
+uvicorn[standard]==0.40.0
 pydantic>=2.12.0,<3.0.0
 python-multipart==0.0.22
 funasr==1.3.1
@@ -19,7 +16,6 @@ scipy==1.15.3
 httpx==0.28.1
 wetext==0.1.2
 python-dotenv==1.2.1
-# transformers: qwen-asr 固定了 4.57.6，跟随其依赖
 # huggingface_hub: transformers 4.57.6 要求 <1.0
 transformers==4.57.6
 huggingface_hub>=0.34.0,<1.0

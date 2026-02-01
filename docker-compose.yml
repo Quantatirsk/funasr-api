@@ -22,10 +22,12 @@ services:
       - ./temp:/app/temp
       - ./data:/app/data
       - ./logs:/app/logs
-      # ModelScope 模型 (Paraformer 等)
+      # 方案1: 项目本地目录（模型与项目放在一起，便于备份）
       - ./models/modelscope:/root/.cache/modelscope
-      # HuggingFace 模型 (Qwen3-ASR 等，vLLM 需要)
       - ./models/huggingface:/root/.cache/huggingface
+      # 方案2: 用户级缓存目录（多项目共享，节省空间）
+      # - ~/.cache/modelscope:/root/.cache/modelscope
+      # - ~/.cache/huggingface:/root/.cache/huggingface
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
