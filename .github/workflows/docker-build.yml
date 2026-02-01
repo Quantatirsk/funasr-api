@@ -18,6 +18,7 @@ env:
 jobs:
   build-cpu:
     runs-on: ubuntu-latest
+    environment: Docker
     permissions:
       contents: read
       packages: write
@@ -65,6 +66,7 @@ jobs:
 
   build-gpu:
     runs-on: ubuntu-latest
+    environment: Docker
     permissions:
       contents: read
       packages: write
