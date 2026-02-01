@@ -6,9 +6,23 @@ on:
       - main
     tags:
       - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**'
+      - '.env.example'
+      - '.gitignore'
+      - '.dockerignore'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**'
+      - '.env.example'
+      - '.gitignore'
+      - '.dockerignore'
   workflow_dispatch:
 
 env:
