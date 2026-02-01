@@ -90,6 +90,11 @@ class Settings:
     # Qwen3-ASR-0.6B = 强制使用 0.6B
     QWEN_ASR_MODEL: str = "auto"
 
+    # 流式 VLLM 实例控制（默认不启用，节省显存）
+    # false = 只加载非流式实例（默认）
+    # true = 同时加载流式和非流式实例
+    ENABLE_STREAMING_VLLM: bool = False
+
     def __init__(self):
         """从环境变量读取配置"""
         self._load_from_env()
@@ -168,6 +173,11 @@ class Settings:
         # Qwen3-ASR 模型配置
         # auto = 自动检测显存选择, 或直接指定 Qwen3-ASR-1.7B / Qwen3-ASR-0.6B
         self.QWEN_ASR_MODEL = os.getenv("QWEN_ASR_MODEL", self.QWEN_ASR_MODEL)
+
+        # 流式 VLLM 实例控制
+        self.ENABLE_STREAMING_VLLM = (
+            os.getenv("ENABLE_STREAMING_VLLM", "false").lower() == "true"
+        )
 
     def _parse_size(self, size_str: str) -> int:
         """解析带单位的大小字符串

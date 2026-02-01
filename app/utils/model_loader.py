@@ -162,7 +162,8 @@ def preload_models() -> dict:
 
                 # 为 Qwen3-ASR 加载流式专用实例（完全隔离状态）
                 # 根据实际加载的模型决定流式实例
-                if model_id.startswith("qwen3-asr-") and model_id in ["qwen3-asr-1.7b", "qwen3-asr-0.6b"]:
+                # 仅在 ENABLE_STREAMING_VLLM=true 时加载流式实例（默认 false，节省显存）
+                if settings.ENABLE_STREAMING_VLLM and model_id.startswith("qwen3-asr-"):
                     streaming_key = f"{model_id}-streaming"
                     result["asr_models"][streaming_key] = {"loaded": False, "error": None}
                     try:
