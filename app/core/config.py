@@ -58,7 +58,7 @@ class Settings:
     AUTO_LOAD_CUSTOM_ASR_MODELS: str = (
         ""  # 启动时自动加载的自定义ASR模型列表（逗号分隔，如: paraformer-large）
     )
-    VAD_MODEL: str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    VAD_MODEL: str = "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch"
     PUNC_MODEL: str = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
     PUNC_REALTIME_MODEL: str = (
         "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727"

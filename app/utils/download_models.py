@@ -59,8 +59,8 @@ def _get_qwen_models() -> list[tuple[str, str]]:
 MODELSCOPE_MODELS = [
     ("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch", "Paraformer Large"),
     ("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online", "Paraformer Online"),
-    # VAD 模型: config.py 中使用的是 iic/ 版本
-    ("iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD"),
+    # VAD 模型: config.py 中使用的是 damo/ 版本
+    ("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch", "VAD"),
     # CAM++ 说话人分离: speaker_diarizer.py 中使用的是 iic/speech_campplus_speaker-diarization_common
     # 注意：以下两个 damo/ 模型是 CAM++ 的隐式依赖，FunASR 会自动下载，需预置避免运行时下载
     ("iic/speech_campplus_speaker-diarization_common", "CAM++"),
