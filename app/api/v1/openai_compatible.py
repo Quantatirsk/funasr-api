@@ -17,7 +17,6 @@ from ...core.config import settings
 from ...core.executor import run_sync
 from ...core.security import validate_token
 from ...core.exceptions import (
-    AuthenticationException,
     InvalidParameterException,
     create_error_response,
 )

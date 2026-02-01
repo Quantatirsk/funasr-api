@@ -22,7 +22,10 @@ services:
       - ./temp:/app/temp
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./models:/root/.cache/modelscope
+      # ModelScope 模型 (Paraformer 等)
+      - ./models/modelscope:/root/.cache/modelscope
+      # HuggingFace 模型 (Qwen3-ASR 等，vLLM 需要)
+      - ./models/huggingface:/root/.cache/huggingface
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
