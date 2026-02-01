@@ -4,6 +4,8 @@
 
 Speech recognition API service powered by [FunASR](https://github.com/alibaba-damo-academy/FunASR) and [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), supporting 52 languages, compatible with OpenAI API and Alibaba Cloud Speech API.
 
+[简体中文](./docs/README_zh.md)
+
 ---
 
 ![Static Badge](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
