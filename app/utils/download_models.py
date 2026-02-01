@@ -46,8 +46,8 @@ def _get_qwen_models() -> list[tuple[str, str]]:
                 print(f"显存 {vram:.1f}GB < 32GB，加载 Qwen3-ASR-0.6B")
                 return [("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
         else:
-            print("无 CUDA，下载 Qwen3-ASR-0.6B")
-            return [("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
+            print("无 CUDA，跳过 Qwen3-ASR（vLLM 不支持 CPU）")
+            return []  # CPU 模式下不下载 Qwen 模型
     except ImportError:
         print("默认下载 Qwen3-ASR-1.7B")
         return [("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]

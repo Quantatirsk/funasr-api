@@ -22,7 +22,6 @@ python-dotenv==1.2.1
 # huggingface_hub: transformers 4.57.6 要求 <1.0
 transformers==4.57.6
 huggingface_hub>=0.34.0,<1.0
-hdbscan>=0.8.41
 loguru>=0.7.2
 
 # 注意：CPU 模式不包含 qwen-asr[vllm]（vLLM 不支持 CPU）
