@@ -48,7 +48,7 @@ class ASRQueryParams(BaseModel):
     )
 
     word_timestamps: Optional[bool] = Field(
-        default=False,
+        default=True,
         description="是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）",
     )
 

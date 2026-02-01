@@ -255,8 +255,8 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                 "required": False,
                 "schema": {
                     "type": "boolean",
-                    "default": False,
-                    "example": False,
+                    "default": True,
+                    "example": True,
                 },
                 "description": "是否返回字词级时间戳（仅 Qwen3-ASR 模型支持）",
             },
