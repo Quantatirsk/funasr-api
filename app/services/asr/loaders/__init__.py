@@ -6,10 +6,12 @@
 
 from .base_loader import BaseModelLoader
 from .paraformer_loader import ParaformerModelLoader
+from .qwen3_loader import Qwen3ModelLoader
 from .loader_factory import ModelLoaderFactory
 
 __all__ = [
     "BaseModelLoader",
     "ParaformerModelLoader",
+    "Qwen3ModelLoader",
     "ModelLoaderFactory",
 ]
