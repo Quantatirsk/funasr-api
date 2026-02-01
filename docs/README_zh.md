@@ -2,7 +2,7 @@
 
 <h3>开箱即用的本地私有化部署语音识别服务</h3>
 
-基于 FunASR 的语音识别 API 服务，提供高精度中文语音识别(ASR)功能，兼容阿里云语音 API 和 OpenAI Audio API。
+基于 [FunASR](https://github.com/alibaba-damo-academy/FunASR) 和 [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 的语音识别 API 服务，提供高精度中文语音识别(ASR)功能，兼容阿里云语音 API 和 OpenAI Audio API。
 
 ---
 
@@ -14,7 +14,7 @@
 
 ## 主要特性
 
-- **多模型支持** - 集成 Qwen3-ASR 1.7B、Qwen3-ASR 0.6B 和 Paraformer Large 高质量 ASR 模型
+- **多模型支持** - 集成 [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 1.7B/0.6B 和 Paraformer Large 高质量 ASR 模型
 - **说话人分离** - 基于 CAM++ 模型自动识别多说话人，返回说话人标记
 - **OpenAI API 兼容** - 支持 `/v1/audio/transcriptions` 端点，可直接使用 OpenAI SDK
 - **阿里云 API 兼容** - 支持阿里云语音识别 RESTful API 和 WebSocket 流式协议

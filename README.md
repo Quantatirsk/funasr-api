@@ -2,7 +2,7 @@
 
 <h3>Ready-to-use Local Speech Recognition API Service</h3>
 
-Speech recognition API service powered by FunASR and Qwen3-ASR, supporting 52 languages, compatible with OpenAI API and Alibaba Cloud Speech API.
+Speech recognition API service powered by [FunASR](https://github.com/alibaba-damo-academy/FunASR) and [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), supporting 52 languages, compatible with OpenAI API and Alibaba Cloud Speech API.
 
 ---
 
@@ -14,7 +14,7 @@ Speech recognition API service powered by FunASR and Qwen3-ASR, supporting 52 la
 
 ## Features
 
-- **Multi-Model Support** - Integrates Qwen3-ASR 1.7B, Qwen3-ASR 0.6B, and Paraformer Large ASR models
+- **Multi-Model Support** - Integrates [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 1.7B/0.6B and Paraformer Large ASR models
 - **Speaker Diarization** - Automatic multi-speaker identification using CAM++ model
 - **OpenAI API Compatible** - Supports `/v1/audio/transcriptions` endpoint, works with OpenAI SDK
 - **Alibaba Cloud API Compatible** - Supports Alibaba Cloud Speech RESTful API and WebSocket streaming protocol
