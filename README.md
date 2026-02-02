@@ -16,7 +16,7 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 
 ## Demo
 
-<video src="./demo/demo.mp4" controls width="100%"></video>
+<video src="https://raw.githubusercontent.com/Quantatirsk/funasr-api/main/demo/demo.mp4" controls width="100%"></video>
 
 ## Features
 
