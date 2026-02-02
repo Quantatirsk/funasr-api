@@ -14,7 +14,7 @@
 
 ## 演示
 
-<video src="https://media.cdn.vect.one/qwenasr_client_demo.mp4" controls width="100%"></video>
+[![演示](../demo/demo.png)](https://media.cdn.vect.one/qwenasr_client_demo.mp4)
 
 ## 主要特性
 
