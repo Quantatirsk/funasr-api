@@ -145,6 +145,8 @@ def generate_vtt(segments: List[TranscriptionSegment]) -> str:
 
 def map_model_id(model: str) -> Optional[str]:
     """将 OpenAI 模型 ID 映射到 FunASR-API 模型 ID"""
+    from ...services.asr.validators import _get_active_qwen_model
+
     # 处理 Swagger UI 的默认值 "string" 或空值
     if not model or model.lower() == "string":
         return None  # 使用默认模型
@@ -152,6 +154,10 @@ def map_model_id(model: str) -> Optional[str]:
     # whisper-* 映射到默认模型（兼容 OpenAI SDK）
     if model.lower().startswith("whisper"):
         return None  # 使用默认模型
+
+    # qwen3-asr 模糊匹配：自动路由到已启动的模型版本
+    if model.lower() == "qwen3-asr":
+        return _get_active_qwen_model()
 
     # 验证模型ID是否受支持
     supported_models = _get_dynamic_model_list()
@@ -174,6 +180,7 @@ def _get_openai_model_description() -> str:
     model_descriptions = {
         "qwen3-asr-1.7b": "Qwen3-ASR 1.7B，52 种语言，vLLM 高性能",
         "qwen3-asr-0.6b": "Qwen3-ASR 0.6B，轻量版，适合小显存环境",
+        "qwen3-asr": "自动路由到当前已启动的 Qwen3-ASR 版本",
         "paraformer-large": "高精度中文 ASR，内置 VAD+标点",
     }
 

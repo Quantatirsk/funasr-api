@@ -186,6 +186,7 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
 ## 可用模型
 - **qwen3-asr-1.7b**（默认）：Qwen3-ASR 1.7B，52种语言+方言，vLLM高性能（离线）
 - **qwen3-asr-0.6b**：Qwen3-ASR 0.6B，轻量版多语言，适合小显存（离线）
+- **qwen3-asr**：自动路由到当前已启动的 Qwen3-ASR 版本（根据显存或配置自动选择）
 - **paraformer-large**：高精度中文语音识别，内置VAD+标点（离线/实时）
 
 ## 音频输入方式

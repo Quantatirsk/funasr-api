@@ -116,7 +116,7 @@ class AudioParamsValidator:
         验证模型ID
 
         Args:
-            model_id: 模型ID字符串
+            model_id: 模型ID字符串，支持模糊匹配如 "qwen3-asr" 自动路由到已启动的版本
 
         Returns:
             验证后的模型ID（如果输入为None则返回默认值）
@@ -129,6 +129,10 @@ class AudioParamsValidator:
 
         if not model_id:
             return _get_default_model()
+
+        # 处理模糊匹配：qwen3-asr 自动映射到当前激活的模型版本
+        if model_id.lower() == "qwen3-asr":
+            return _get_active_qwen_model()
 
         if model_id not in supported_models:
             raise InvalidParameterException(
