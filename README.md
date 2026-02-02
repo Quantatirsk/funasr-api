@@ -14,6 +14,10 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 
 </div>
 
+## Demo
+
+<video src="./demo/demo.mp4" controls width="100%"></video>
+
 ## Features
 
 - **Multi-Model Support** - Integrates [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 1.7B/0.6B and Paraformer Large ASR models

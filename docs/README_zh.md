@@ -12,6 +12,10 @@
 
 </div>
 
+## 演示
+
+<video src="../demo/demo.mp4" controls width="100%"></video>
+
 ## 主要特性
 
 - **多模型支持** - 集成 [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 1.7B/0.6B 和 Paraformer Large 高质量 ASR 模型
