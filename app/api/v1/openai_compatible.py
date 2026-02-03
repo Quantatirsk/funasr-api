@@ -270,6 +270,10 @@ def _get_transcription_description() -> str:
 **支持的音频格式：**
 `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`, `flac`, `ogg`, `amr`, `pcm`
 
+**音频输入方式（二选一）：**
+1. **文件上传**：通过 `file` 参数上传音频文件（标准 OpenAI 方式）
+2. **URL 下载**：通过 `audio_address` 参数提供音频文件 URL（HTTP/HTTPS）
+
 **文件大小限制：**
 - 最大支持 {settings.MAX_AUDIO_SIZE // (1024 * 1024)}MB（可通过 `MAX_AUDIO_SIZE` 环境变量配置）
 - OpenAI 原生限制为 25MB
@@ -344,10 +348,14 @@ def _get_transcription_description() -> str:
 )
 async def create_transcription(
     request: Request,
-    # 1. 必需参数 - 输入
-    file: UploadFile = File(
-        ...,
-        description="要转写的音频文件，支持 mp3/wav/flac/ogg/m4a/amr/pcm 等格式"
+    # 1. 音频输入（二选一）
+    file: Optional[UploadFile] = File(
+        default=None,
+        description="要转写的音频文件，支持 mp3/wav/flac/ogg/m4a/amr/pcm 等格式（与 audio_address 二选一）"
+    ),
+    audio_address: Optional[str] = Form(
+        default=None,
+        description="音频文件 URL（HTTP/HTTPS）。指定此参数时，将从 URL 下载音频而非读取 file 参数"
     ),
     # 2. 核心参数 - 使用显式默认值，Swagger UI 才能正确显示
     model: str = Form(
@@ -396,7 +404,16 @@ async def create_transcription(
     request_start_time = time.time()
 
     logger.info(f"[OpenAI API] 收到转写请求: model={model}, format={response_format}, "
-                f"speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}")
+                f"speaker_diarization={enable_speaker_diarization}, word_level={word_timestamps}, "
+                f"audio_address={'有' if audio_address else '无'}")
+
+    # 验证输入：file 和 audio_address 必须二选一
+    if not file and not audio_address:
+        response_data = create_error_response(
+            error_code="INVALID_PARAMETER",
+            message="必须提供 file（上传文件）或 audio_address（音频 URL）其中之一",
+        )
+        return JSONResponse(content=response_data, status_code=400)
 
     # 获取音频处理服务
     audio_service = get_audio_service()
@@ -422,15 +439,33 @@ async def create_transcription(
                 )
                 return JSONResponse(content=response_data, status_code=401)
 
-        # 读取上传的音频文件
-        audio_data = await file.read()
+        # 处理音频输入（URL 下载 或 文件上传）
+        if audio_address:
+            # 方式1: 从 URL 下载音频
+            logger.info(f"[OpenAI API] 从 URL 下载音频: {audio_address}")
+            normalized_audio_path, audio_duration, audio_path = await audio_service.process_from_request(
+                request=request,
+                audio_address=audio_address,
+                task_id=f"openai-{int(time.time() * 1000)}",
+                sample_rate=16000,
+            )
+        else:
+            # 方式2: 从上传文件读取音频
+            if file is None:
+                response_data = create_error_response(
+                    error_code="INVALID_PARAMETER",
+                    message="未提供音频文件",
+                )
+                return JSONResponse(content=response_data, status_code=400)
+            logger.info(f"[OpenAI API] 从上传文件读取音频: {file.filename}")
+            audio_data = await file.read()
 
-        # 使用音频服务处理上传的音频文件
-        normalized_audio_path, audio_duration, audio_path = await audio_service.process_upload_file(
-            audio_data=audio_data,
-            filename=file.filename,
-            sample_rate=16000,
-        )
+            # 使用音频服务处理上传的音频文件
+            normalized_audio_path, audio_duration, audio_path = await audio_service.process_upload_file(
+                audio_data=audio_data,
+                filename=file.filename if file else None,
+                sample_rate=16000,
+            )
 
         # 映射模型 ID
         mapped_model_id = map_model_id(model)
