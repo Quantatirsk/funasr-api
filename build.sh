@@ -30,6 +30,15 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 header() { echo -e "\n${BOLD}${BLUE}$1${NC}\n"; }
 
+# 获取可用的压缩工具（优先 pigz）
+get_compressor() {
+    if command -v pigz &> /dev/null; then
+        echo "pigz -p $(nproc)"
+    else
+        echo "gzip"
+    fi
+}
+
 # 显示 banner
 show_banner() {
     echo -e "${CYAN}"
@@ -317,7 +326,11 @@ build_cpu() {
         local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-cpu-${VERSION}-${arch_suffix}.tar"
         if [ -f "$tar_file" ]; then
             info "压缩: ${tar_file} → ${tar_file}.gz"
-            gzip -f "$tar_file"
+            local compressor=$(get_compressor)
+            if [[ "$compressor" == pigz* ]]; then
+                info "使用 pigz 并行压缩 ($(nproc) 线程)..."
+            fi
+            $compressor -f "$tar_file"
             local size=$(du -h "${tar_file}.gz" | cut -f1)
             info "导出成功: ${tar_file}.gz ($size)"
         fi
@@ -373,7 +386,11 @@ build_gpu() {
         local tar_file="${EXPORT_DIR}/${IMAGE_NAME}-gpu-${VERSION}-amd64.tar"
         if [ -f "$tar_file" ]; then
             info "压缩: ${tar_file} → ${tar_file}.gz"
-            gzip -f "$tar_file"
+            local compressor=$(get_compressor)
+            if [[ "$compressor" == pigz* ]]; then
+                info "使用 pigz 并行压缩 ($(nproc) 线程)..."
+            fi
+            $compressor -f "$tar_file"
             local size=$(du -h "${tar_file}.gz" | cut -f1)
             info "导出成功: ${tar_file}.gz ($size)"
         fi
