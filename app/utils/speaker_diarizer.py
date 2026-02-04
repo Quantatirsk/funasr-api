@@ -67,6 +67,7 @@ def get_global_diarization_pipeline():
                 _global_diarization_pipeline = pipeline(
                     task=Tasks.speaker_diarization,
                     model=model_path,
+                    local_files_only=True,
                 )
                 logger.info("CAM++ 模型加载成功")
             except Exception as e:
