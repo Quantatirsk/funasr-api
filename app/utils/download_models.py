@@ -9,6 +9,7 @@
 """
 
 import os
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -132,6 +133,58 @@ def check_all_models() -> list[tuple[str, str, str, Optional[str]]]:
     return missing
 
 
+def fix_camplusplus_config() -> bool:
+    """修复 CAM++ 配置文件，将模型ID替换为本地路径（用于离线环境）
+
+    修复 issue #15: 离线环境下 CAM++ 模型会尝试从 modelscope.cn 获取依赖模型配置
+
+    Returns:
+        是否修复成功
+    """
+    try:
+        cache_dir = Path.home() / ".cache" / "modelscope" / "hub" / "models"
+        config_file = cache_dir / "iic/speech_campplus_speaker-diarization_common/configuration.json"
+
+        if not config_file.exists():
+            return False
+
+        # 读取配置文件
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # 需要替换的模型ID -> 本地路径映射
+        replacements = {
+            "damo/speech_campplus_sv_zh-cn_16k-common": str(cache_dir / "damo/speech_campplus_sv_zh-cn_16k-common"),
+            "damo/speech_campplus-transformer_scl_zh-cn_16k-common": str(cache_dir / "damo/speech_campplus-transformer_scl_zh-cn_16k-common"),
+            "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch": str(cache_dir / "damo/speech_fsmn_vad_zh-cn-16k-common-pytorch"),
+        }
+
+        # 检查是否需要修改
+        modified = False
+        if "model" in config:
+            for key in ["speaker_model", "change_locator", "vad_model"]:
+                if key in config["model"]:
+                    old_value = config["model"][key]
+                    if old_value in replacements:
+                        new_value = replacements[old_value]
+                        # 检查本地路径是否存在
+                        if Path(new_value).exists():
+                            config["model"][key] = new_value
+                            modified = True
+
+        # 写回配置文件
+        if modified:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+            return True
+
+        return False
+
+    except Exception as e:
+        print(f"⚠️  修复 CAM++ 配置文件失败: {e}")
+        return False
+
+
 def download_models(auto_mode: bool = False) -> bool:
     """下载所有需要的模型
 
@@ -217,6 +270,16 @@ def download_models(auto_mode: bool = False) -> bool:
                 if not auto_mode:
                     print(f" ❌ 失败: {e}")
                 failed.append((model_id, str(e)))
+
+    # 修复 CAM++ 配置文件（用于离线环境）
+    if not auto_mode:
+        print("\n🔧 修复 CAM++ 配置文件...")
+    if fix_camplusplus_config():
+        if not auto_mode:
+            print("  ✅ CAM++ 配置已修复（离线环境可用）")
+    else:
+        if not auto_mode:
+            print("  ℹ️  无需修复或配置文件不存在")
 
     if not auto_mode:
         print("\n" + "=" * 60)

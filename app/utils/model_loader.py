@@ -100,6 +100,13 @@ def preload_models() -> dict:
     Returns:
         dict: 包含加载状态的字典
     """
+    # 修复 CAM++ 配置文件（用于离线环境）
+    try:
+        from .download_models import fix_camplusplus_config
+        fix_camplusplus_config()
+    except Exception:
+        pass  # 修复失败不影响启动
+
     result = {
         "asr_models": {},  # 所有ASR模型加载状态
         "vad_model": {"loaded": False, "error": None},
