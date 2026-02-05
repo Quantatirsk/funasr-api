@@ -345,21 +345,27 @@ class BaseASREngine(ABC):
                     )
                     if raw_result.segments:
                         result_seg = raw_result.segments[0]
+                        # 使用模型返回的实际时间戳（相对于片段），转换为全局时间戳
+                        # 避免使用分割边界，防止误差累积
+                        actual_start = seg.start_sec + result_seg.start_time
+                        actual_end = seg.start_sec + result_seg.end_time
                         results.append(
                             ASRSegmentResult(
                                 text=result_seg.text,
-                                start_time=seg.start_sec,
-                                end_time=seg.end_sec,
+                                start_time=actual_start,
+                                end_time=actual_end,
                                 speaker_id=getattr(seg, 'speaker_id', None),
                                 word_tokens=result_seg.word_tokens,
                             )
                         )
                     else:
+                        # 模型未返回时间戳，使用 0 便于发现问题
+                        logger.warning(f"片段 {idx + 1} 未返回时间戳，使用 0")
                         results.append(
                             ASRSegmentResult(
                                 text=raw_result.text,
-                                start_time=seg.start_sec,
-                                end_time=seg.end_sec,
+                                start_time=0.0,
+                                end_time=0.0,
                                 speaker_id=getattr(seg, 'speaker_id', None),
                             )
                         )

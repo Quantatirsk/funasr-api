@@ -6,7 +6,7 @@ FunASR语音识别引擎模块
 
 import time
 import logging
-from typing import Optional, Dict, List, Any, cast
+from typing import Optional, Dict, List, Any, Tuple, cast
 from funasr import AutoModel
 
 from app.core.config import settings
@@ -483,8 +483,12 @@ class FunASREngine(RealTimeASREngine):
         """批量推理多个音频片段（FunASR 优化版）
 
         利用 FunASR 的批量推理能力，比逐个推理快 2-3 倍
-        注意：FunASR 不支持字词级时间戳，word_timestamps 参数会被忽略
+        注意：批量推理不返回准确时间戳，如需准确时间戳会使用逐个推理
         """
+        # 需要准确时间戳时，使用父类的逐个推理（已修复时间戳问题）
+        if word_timestamps:
+            return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
+
         if not self.offline_model or not self._offline_loader:
             logger.warning("离线模型未加载，使用默认批处理实现")
             return super()._transcribe_batch(segments, hotwords, enable_punctuation, enable_itn, sample_rate, word_timestamps)
@@ -538,8 +542,8 @@ class FunASREngine(RealTimeASREngine):
             # 批量推理
             batch_results = self.offline_model.generate(**generate_kwargs)
 
-            # 解析批量结果
-            batch_results_parsed = []
+            # 解析批量结果，提取文本和时间戳
+            batch_results_parsed: List[Tuple[str, float, float]] = []
             if batch_results and isinstance(batch_results, list):
                 for res in batch_results:
                     if isinstance(res, dict):
@@ -553,22 +557,59 @@ class FunASREngine(RealTimeASREngine):
                         if enable_itn and text:
                             text = apply_itn_to_text(text)
 
-                        batch_results_parsed.append(text)
+                        # 提取时间戳（优先从 sentence_info，其次 timestamp）
+                        start_ms, end_ms = 0.0, 0.0
+                        sentence_info = res.get("sentence_info", [])
+                        if sentence_info and isinstance(sentence_info, list) and len(sentence_info) > 0:
+                            try:
+                                first = sentence_info[0]
+                                last = sentence_info[-1]
+                                if isinstance(first, dict):
+                                    start_ms = float(first.get("start", 0))
+                                    end_ms = float(last.get("end", 0))
+                                elif isinstance(first, (list, tuple)) and len(first) >= 2:
+                                    start_ms = float(first[0])
+                                    end_ms = float(last[1] if isinstance(last, (list, tuple)) and len(last) >= 2 else first[1])
+                            except (IndexError, TypeError, KeyError, ValueError):
+                                pass
+                        else:
+                            # 尝试从 timestamp 字段提取
+                            timestamp = res.get("timestamp", [])
+                            if timestamp and isinstance(timestamp, list) and len(timestamp) > 0:
+                                try:
+                                    first_ts = timestamp[0]
+                                    last_ts = timestamp[-1]
+                                    if isinstance(first_ts, (list, tuple)) and len(first_ts) >= 2:
+                                        start_ms = float(first_ts[0])
+                                        end_ms = float(last_ts[1] if isinstance(last_ts, (list, tuple)) and len(last_ts) >= 2 else first_ts[1])
+                                except (IndexError, TypeError, ValueError):
+                                    pass
+
+                        batch_results_parsed.append((text, start_ms / 1000.0, end_ms / 1000.0))
                     else:
-                        batch_results_parsed.append("")
+                        batch_results_parsed.append(("", 0.0, 0.0))
             else:
                 logger.warning("批量推理返回结果格式异常")
-                batch_results_parsed = [""] * len(valid_inputs)
+                batch_results_parsed = [("", 0.0, 0.0)] * len(valid_inputs)
 
-            # 将结果映射回原始顺序（包括跳过的片段）
+            # 将结果映射回原始顺序，使用实际识别时间戳（相对于片段）转换为全局时间戳
             results: List[ASRSegmentResult] = [
                 ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments
             ]
-            for (idx, seg, _), text in zip(valid_inputs, batch_results_parsed):
+            for (idx, seg, _), (text, rel_start, rel_end) in zip(valid_inputs, batch_results_parsed):
+                if rel_start > 0 or rel_end > 0:
+                    # 使用模型返回的实际时间戳转换为全局时间
+                    actual_start = seg.start_sec + rel_start
+                    actual_end = seg.start_sec + rel_end
+                else:
+                    # 模型未返回时间戳，使用 0 便于发现问题
+                    logger.warning(f"批量推理片段 {idx} 未返回时间戳")
+                    actual_start = 0.0
+                    actual_end = 0.0
                 results[idx] = ASRSegmentResult(
                     text=text,
-                    start_time=seg.start_sec,
-                    end_time=seg.end_sec,
+                    start_time=actual_start,
+                    end_time=actual_end,
                     speaker_id=getattr(seg, 'speaker_id', None),
                 )
 
