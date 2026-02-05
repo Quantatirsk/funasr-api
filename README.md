@@ -32,25 +32,7 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 
 ## Quick Deployment
 
-### 1. Download Models (Required for First Deployment)
-
-Models will be automatically downloaded on first startup. For pre-download or offline deployment:
-
-```bash
-# Create model directories
-mkdir -p models/modelscope models/huggingface
-
-# Start service, models will be downloaded to models/ directory
-docker-compose up -d
-
-# Or use symlinks (if models are already in other locations)
-ln -s ~/.cache/modelscope ./models/modelscope
-ln -s ~/.cache/huggingface ./models/huggingface
-```
-
-> For detailed instructions, see [Model Setup Guide](./docs/MODEL_SETUP.md)
-
-### 2. Docker Deployment (Recommended)
+### 1. Docker Deployment (Recommended)
 
 ```bash
 # Start service (GPU version) - using docker-compose (recommended)
@@ -118,7 +100,8 @@ python start.py
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `file` | file | Required | Audio file |
+| `file` | file | Mutually exclusive with `audio_address` | Audio file |
+| `audio_address` | string | Mutually exclusive with `file` | Audio file URL (HTTP/HTTPS) |
 | `model` | string | `qwen3-asr-1.7b` | Model selection |
 | `language` | string | Auto-detect | Language code (zh/en/ja) |
 | `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
@@ -126,6 +109,10 @@ python start.py
 | `response_format` | string | `verbose_json` | Output format |
 | `prompt` | string | - | Prompt text (reserved) |
 | `temperature` | float | `0` | Sampling temperature (reserved) |
+
+**Audio Input Methods:**
+- **File Upload**: Use `file` parameter to upload audio file (standard OpenAI way)
+- **URL Download**: Use `audio_address` parameter to provide audio URL, service will download automatically
 
 **Usage Examples:**
 

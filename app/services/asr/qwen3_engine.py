@@ -34,11 +34,11 @@ def calculate_gpu_memory_utilization(model_path: str) -> float:
     """Calculate optimal gpu_memory_utilization based on model size and available VRAM
 
     Model memory requirements (observed, including KV cache):
-    - 0.6B: ~6GB (model + KV cache)
+    - 0.6B: ~8GB (model + KV cache)
     - 1.7B: ~12GB (model + KV cache)
 
     Examples:
-    - 6GB VRAM + 0.6B: 6/6 = 1.0 → clamped to 0.95
+    - 8GB VRAM + 0.6B: 8/8 = 1.0 → clamped to 0.95
     - 24GB VRAM + 1.7B: 12/24 = 0.5
     - 80GB VRAM + 1.7B: 12/80 = 0.15
 
@@ -63,7 +63,7 @@ def calculate_gpu_memory_utilization(model_path: str) -> float:
 
     # Model memory requirements (GB) - includes model + KV cache
     MODEL_MEMORY_REQUIREMENTS = {
-        "0.6B": 6.0,
+        "0.6B": 8.0,
         "1.7B": 12.0,
     }
 

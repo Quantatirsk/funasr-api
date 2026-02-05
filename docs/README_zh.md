@@ -30,25 +30,7 @@
 
 ## 快速部署
 
-### 1. 下载模型（首次部署必需）
-
-模型将在首次启动时自动下载。如需预下载或内网部署：
-
-```bash
-# 创建模型目录
-mkdir -p models/modelscope models/huggingface
-
-# 启动服务，模型将自动下载到 models/ 目录
-docker-compose up -d
-
-# 或使用软链接（如果模型已在其他位置）
-ln -s ~/.cache/modelscope ./models/modelscope
-ln -s ~/.cache/huggingface ./models/huggingface
-```
-
-> 详细说明请查看 [模型下载与部署指南](./MODEL_SETUP.md)
-
-### 2. Docker 部署(推荐)
+### 1. Docker 部署(推荐)
 
 ```bash
 # 启动服务（GPU 版本）- 使用 docker-compose（推荐）
@@ -116,7 +98,8 @@ python start.py
 
 | 参数                           | 类型   | 默认值                | 说明                                  |
 | ------------------------------ | ------ | --------------------- | ------------------------------------- |
-| `file`                       | file   | 必填                  | 音频文件                              |
+| `file`                       | file   | 与 `audio_address` 二选一 | 音频文件                              |
+| `audio_address`              | string | 与 `file` 二选一      | 音频文件 URL（HTTP/HTTPS）            |
 | `model`                      | string | `qwen3-asr-1.7b`    | 模型选择                              |
 | `language`                   | string | 自动检测              | 语言代码 (zh/en/ja)，保留兼容         |
 | `enable_speaker_diarization` | bool   | `true`              | 启用说话人分离                        |
@@ -124,6 +107,10 @@ python start.py
 | `response_format`            | string | `verbose_json`      | 输出格式                              |
 | `prompt`                     | string | -                     | 提示文本（保留兼容，暂未生效）        |
 | `temperature`                | float  | `0`                   | 采样温度（保留兼容，暂未生效）        |
+
+**音频输入方式:**
+- **文件上传**: 使用 `file` 参数上传音频文件（标准 OpenAI 方式）
+- **URL 下载**: 使用 `audio_address` 参数提供音频 URL，服务将自动下载
 
 **使用示例:**
 
