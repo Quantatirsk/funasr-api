@@ -149,34 +149,7 @@ class BaseASREngine(ABC):
             duration = get_audio_duration(audio_path)
             logger.info(f"[transcribe_long_audio] 音频时长: {duration:.2f}秒")
 
-            # 短音频且不启用说话人分离：直接使用 VAD 识别
-            if duration <= self.MAX_AUDIO_DURATION_SEC and not enable_speaker_diarization:
-                raw_result = self.transcribe_file_with_vad(
-                    audio_path=audio_path,
-                    hotwords=hotwords,
-                    enable_punctuation=enable_punctuation,
-                    enable_itn=enable_itn,
-                    sample_rate=sample_rate,
-                    word_timestamps=word_timestamps,
-                )
-
-                segments = raw_result.segments
-                if not segments:
-                    segments = [
-                        ASRSegmentResult(
-                            text=raw_result.text,
-                            start_time=0.0,
-                            end_time=duration
-                        )
-                    ]
-
-                return ASRFullResult(
-                    text=raw_result.text,
-                    segments=segments,
-                    duration=duration,
-                )
-
-            # 长音频或多说话人：需要分段
+            # 统一使用分段处理
             speaker_segments = None
             audio_segments = None
 
