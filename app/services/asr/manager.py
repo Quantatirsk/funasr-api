@@ -254,6 +254,16 @@ class ModelManager:
             # 检查模型是否已加载
             loaded = model_id in self._loaded_engines
 
+            # 判断模型加载模式
+            if config.offline_model_path and config.realtime_model_path:
+                asr_model_mode = "all"
+            elif config.offline_model_path:
+                asr_model_mode = "offline"
+            elif config.realtime_model_path:
+                asr_model_mode = "realtime"
+            else:
+                asr_model_mode = "offline"  # 默认
+
             models.append(
                 {
                     "id": model_id,
@@ -280,6 +290,7 @@ class ModelManager:
                         if config.realtime_model_path
                         else None
                     ),
+                    "asr_model_mode": asr_model_mode,
                 }
             )
 

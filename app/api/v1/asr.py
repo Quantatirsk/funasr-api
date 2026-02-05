@@ -545,10 +545,15 @@ async def list_models(request: Request):
 
         loaded_count = sum(1 for model in models if model["loaded"])
 
+        # 获取默认模型的加载模式作为系统模式
+        default_model = next((m for m in models if m.get("default")), None)
+        asr_model_mode = default_model.get("asr_model_mode", "all") if default_model else "all"
+
         return {
             "models": models,
             "total": len(models),
             "loaded_count": loaded_count,
+            "asr_model_mode": asr_model_mode,
         }
     except Exception as e:
         logger.error(f"获取模型列表时发生错误: {str(e)}")
