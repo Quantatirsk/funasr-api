@@ -19,14 +19,17 @@ logger = logging.getLogger(__name__)
 # 全局语音活动检测(VAD)模型缓存（避免重复加载）
 _global_vad_model = None
 _vad_model_lock = threading.Lock()
+_vad_inference_lock = threading.Lock()  # 推理互斥锁，防止并发状态混乱
 
 # 全局标点符号模型缓存（避免重复加载）
 _global_punc_model = None
 _punc_model_lock = threading.Lock()
+_punc_inference_lock = threading.Lock()  # 推理互斥锁，防止并发状态混乱
 
 # 全局实时标点符号模型缓存（避免重复加载）
 _global_punc_realtime_model = None
 _punc_realtime_model_lock = threading.Lock()
+_punc_realtime_inference_lock = threading.Lock()  # 推理互斥锁，防止并发状态混乱
 
 
 def get_global_vad_model(device: str):
@@ -54,6 +57,11 @@ def get_global_vad_model(device: str):
                     raise
 
     return _global_vad_model
+
+
+def get_vad_inference_lock():
+    """获取VAD模型推理锁（线程安全）"""
+    return _vad_inference_lock
 
 
 def clear_global_vad_model():
@@ -95,6 +103,11 @@ def get_global_punc_model(device: str):
     return _global_punc_model
 
 
+def get_punc_inference_lock():
+    """获取PUNC模型推理锁（线程安全）"""
+    return _punc_inference_lock
+
+
 def clear_global_punc_model():
     """清理全局标点符号模型缓存"""
     global _global_punc_model
@@ -132,6 +145,11 @@ def get_global_punc_realtime_model(device: str):
                     raise
 
     return _global_punc_realtime_model
+
+
+def get_punc_realtime_inference_lock():
+    """获取实时PUNC模型推理锁（线程安全）"""
+    return _punc_realtime_inference_lock
 
 
 def clear_global_punc_realtime_model():

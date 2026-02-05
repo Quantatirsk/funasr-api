@@ -16,7 +16,12 @@ from app.utils.text_processing import apply_itn_to_text
 from app.infrastructure import resolve_model_path
 from app.services.asr.loaders import ModelLoaderFactory, BaseModelLoader
 from app.services.asr.engines.base import RealTimeASREngine, ASRRawResult, ASRSegmentResult
-from app.services.asr.engines.global_models import get_global_vad_model, get_global_punc_model
+from app.services.asr.engines.global_models import (
+    get_global_vad_model,
+    get_global_punc_model,
+    get_vad_inference_lock,
+    get_punc_inference_lock,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -385,7 +390,10 @@ class FunASREngine(RealTimeASREngine):
         generate_kwargs: Dict[str, Any],
         enable_punctuation: bool,
     ) -> List[Dict[str, Any]]:
-        """使用 VAD 进行转录（传统模型专用）"""
+        """使用 VAD 进行转录（传统模型专用）
+
+        注意：使用全局VAD/PUNC模型时加锁，防止并发状态混乱（issue #18）
+        """
         logger.debug("使用VAD进行分段识别")
         vad_model_instance = get_global_vad_model(self._device)
 
@@ -402,16 +410,18 @@ class FunASREngine(RealTimeASREngine):
         temp_automodel.kwargs = self.offline_model.kwargs
         temp_automodel.model_path = self.offline_model.model_path
 
-        # 设置VAD
-        temp_automodel.vad_model = vad_model_instance.model
-        temp_automodel.vad_kwargs = vad_model_instance.kwargs
+        # 设置VAD（加锁保护，防止并发状态混乱）
+        with get_vad_inference_lock():
+            temp_automodel.vad_model = vad_model_instance.model
+            temp_automodel.vad_kwargs = vad_model_instance.kwargs
 
-        # 设置PUNC
-        if punc_model_instance:
-            temp_automodel.punc_model = punc_model_instance.model
-            temp_automodel.punc_kwargs = punc_model_instance.kwargs
+            # 设置PUNC（加锁保护）
+            if punc_model_instance:
+                temp_automodel.punc_model = punc_model_instance.model
+                temp_automodel.punc_kwargs = punc_model_instance.kwargs
 
-        return temp_automodel.generate(**generate_kwargs)
+            # 在锁内执行推理，确保VAD/PUNC模型状态不被其他请求干扰
+            return temp_automodel.generate(**generate_kwargs)
 
     def _apply_punc_to_text(self, text: str) -> str:
         """手动应用标点符号到文本
@@ -428,10 +438,14 @@ class FunASREngine(RealTimeASREngine):
         try:
             logger.debug(f"手动应用PUNC模型: {text[:50]}...")
             punc_model_instance = get_global_punc_model(self._device)
-            punc_result = punc_model_instance.generate(
-                input=text,
-                cache={},
-            )
+
+            # 加锁保护，防止并发状态混乱（issue #18）
+            with get_punc_inference_lock():
+                punc_result = punc_model_instance.generate(
+                    input=text,
+                    cache={},
+                )
+
             if punc_result and len(punc_result) > 0:
                 text_with_punc = punc_result[0].get("text", text)
                 logger.debug(f"标点添加完成: {text_with_punc[:50]}...")
