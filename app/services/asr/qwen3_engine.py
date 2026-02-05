@@ -33,13 +33,14 @@ def _get_qwen_model():
 def calculate_gpu_memory_utilization(model_path: str) -> float:
     """Calculate optimal gpu_memory_utilization based on model size and available VRAM
 
-    Model memory requirements (observed):
-    - 0.6B: ~6GB (model + initial KV cache)
-    - 1.7B: ~12GB (model + initial KV cache)
+    Model memory requirements (observed, including KV cache):
+    - 0.6B: ~6GB (model + KV cache)
+    - 1.7B: ~12GB (model + KV cache)
 
-    Target allocation (with 33% buffer for KV cache growth):
-    - 0.6B: 8GB
-    - 1.7B: 16GB
+    Examples:
+    - 6GB VRAM + 0.6B: 6/6 = 1.0 → clamped to 0.95
+    - 24GB VRAM + 1.7B: 12/24 = 0.5
+    - 80GB VRAM + 1.7B: 12/80 = 0.15
 
     Args:
         model_path: Path to model (used to detect model size)
@@ -60,22 +61,19 @@ def calculate_gpu_memory_utilization(model_path: str) -> float:
         except ValueError:
             logger.warning(f"Invalid QWEN_GPU_MEMORY_UTILIZATION={env_override}, not a float")
 
-    # Model base memory requirements (GB) - observed values
-    MODEL_BASE_MEMORY = {
+    # Model memory requirements (GB) - includes model + KV cache
+    MODEL_MEMORY_REQUIREMENTS = {
         "0.6B": 6.0,
         "1.7B": 12.0,
     }
 
     # Detect model size from path
     if "0.6B" in model_path:
-        base_memory_gb = MODEL_BASE_MEMORY["0.6B"]
+        required_memory_gb = MODEL_MEMORY_REQUIREMENTS["0.6B"]
         model_size = "0.6B"
     else:
-        base_memory_gb = MODEL_BASE_MEMORY["1.7B"]
+        required_memory_gb = MODEL_MEMORY_REQUIREMENTS["1.7B"]
         model_size = "1.7B"
-
-    # Add 33% buffer for KV cache growth
-    required_memory_gb = base_memory_gb * 1.33
 
     # Get total VRAM
     try:
