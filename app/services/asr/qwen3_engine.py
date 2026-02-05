@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Qwen3-ASR 引擎 - 内嵌 vLLM 后端"""
 
+import os
 import logging
 from typing import Optional, List, Any
 from dataclasses import dataclass
@@ -27,6 +28,88 @@ def _get_qwen_model():
             logger.error("qwen-asr 未安装，请运行: pip install qwen-asr[vllm]")
             raise
     return _qwen_asr_module
+
+
+def calculate_gpu_memory_utilization(model_path: str) -> float:
+    """Calculate optimal gpu_memory_utilization based on model size and available VRAM
+
+    Model memory requirements (observed):
+    - 0.6B: ~6GB (model + initial KV cache)
+    - 1.7B: ~12GB (model + initial KV cache)
+
+    Target allocation (with 33% buffer for KV cache growth):
+    - 0.6B: 8GB
+    - 1.7B: 16GB
+
+    Args:
+        model_path: Path to model (used to detect model size)
+
+    Returns:
+        gpu_memory_utilization ratio (0.0 to 1.0)
+    """
+    # Check environment variable override first
+    env_override = os.getenv("QWEN_GPU_MEMORY_UTILIZATION")
+    if env_override:
+        try:
+            value = float(env_override)
+            if 0.0 < value <= 1.0:
+                logger.info(f"Using environment override: gpu_memory_utilization={value}")
+                return value
+            else:
+                logger.warning(f"Invalid QWEN_GPU_MEMORY_UTILIZATION={env_override}, must be 0.0-1.0")
+        except ValueError:
+            logger.warning(f"Invalid QWEN_GPU_MEMORY_UTILIZATION={env_override}, not a float")
+
+    # Model base memory requirements (GB) - observed values
+    MODEL_BASE_MEMORY = {
+        "0.6B": 6.0,
+        "1.7B": 12.0,
+    }
+
+    # Detect model size from path
+    if "0.6B" in model_path:
+        base_memory_gb = MODEL_BASE_MEMORY["0.6B"]
+        model_size = "0.6B"
+    else:
+        base_memory_gb = MODEL_BASE_MEMORY["1.7B"]
+        model_size = "1.7B"
+
+    # Add 33% buffer for KV cache growth
+    required_memory_gb = base_memory_gb * 1.33
+
+    # Get total VRAM
+    try:
+        if not torch.cuda.is_available():
+            logger.warning("CUDA not available, using fallback gpu_memory_utilization=0.5")
+            return 0.5
+
+        # Use first GPU for memory detection
+        total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+
+        # Calculate utilization ratio
+        utilization = required_memory_gb / total_vram_gb
+
+        # Clamp to safe maximum (0.95)
+        utilization = min(utilization, 0.95)
+
+        logger.info(
+            f"GPU memory calculation: model={model_size}, "
+            f"requires={required_memory_gb:.1f}GB, total_vram={total_vram_gb:.1f}GB, "
+            f"utilization={utilization:.2f}"
+        )
+
+        # Warn if VRAM is insufficient
+        if utilization >= 0.90:
+            logger.warning(
+                f"VRAM may be insufficient: {total_vram_gb:.1f}GB available, "
+                f"{required_memory_gb:.1f}GB required. Consider using smaller model."
+            )
+
+        return round(utilization, 2)
+
+    except Exception as e:
+        logger.error(f"Failed to detect VRAM: {e}, using fallback gpu_memory_utilization=0.5")
+        return 0.5
 
 
 def _handle_asr_error(operation: str):
@@ -75,40 +158,73 @@ class Qwen3ASREngine(BaseASREngine):
         self,
         model_path: str = "Qwen/Qwen3-ASR-1.7B",
         device: str = "auto",
-        gpu_memory_utilization: Optional[float] = None,
         forced_aligner_path: Optional[str] = None,
         max_inference_batch_size: int = 32,
         max_new_tokens: int = 1024,
         max_model_len: Optional[int] = None,
         **kwargs,
     ):
+        """Initialize Qwen3-ASR engine with dynamic GPU memory allocation
+
+        Args:
+            model_path: Path to Qwen3-ASR model
+            device: Device to use (auto/cuda/cpu)
+            forced_aligner_path: Path to forced aligner model (optional)
+            max_inference_batch_size: Maximum batch size for inference
+            max_new_tokens: Maximum new tokens for generation (qwen-asr param)
+            max_model_len: Maximum model context length (vLLM param)
+            **kwargs: Additional arguments (ignored for compatibility)
+
+        Environment Variables:
+            QWEN_GPU_MEMORY_UTILIZATION: Override automatic calculation (0.0-1.0)
+        """
         Qwen3ASRModel = _get_qwen_model()
         self._device = self._detect_device(device)
         self.model_path = model_path
 
-        # 自动设置显存使用率
-        if gpu_memory_utilization is None:
-            gpu_memory_utilization = 0.3 if "0.6B" in model_path else 0.4
+        # Dynamic GPU memory allocation
+        gpu_memory_utilization = calculate_gpu_memory_utilization(model_path)
 
-        fa_kwargs = {"dtype": torch.bfloat16, "device_map": self._device.split(":")[0] if ":" in self._device else "cuda:0"} if forced_aligner_path else None
+        # Prepare forced aligner kwargs
+        fa_kwargs = None
+        if forced_aligner_path:
+            fa_kwargs = {
+                "dtype": torch.bfloat16,
+                "device_map": self._device.split(":")[0] if ":" in self._device else "cuda:0"
+            }
 
-        logger.info(f"加载 Qwen3-ASR: {model_path}, device={self._device}, gpu={gpu_memory_utilization}")
+        logger.info(
+            f"Loading Qwen3-ASR: {model_path}, "
+            f"device={self._device}, gpu_memory_utilization={gpu_memory_utilization}"
+        )
 
-        llm_kwargs = {
+        # Separate vLLM kwargs from qwen-asr kwargs
+        # vLLM kwargs (passed to vllm.LLM)
+        vllm_kwargs = {
             "model": model_path,
             "gpu_memory_utilization": gpu_memory_utilization,
+        }
+        if max_model_len is not None:
+            vllm_kwargs["max_model_len"] = max_model_len
+
+        # qwen-asr kwargs (NOT passed to vLLM, handled by qwen-asr library)
+        qwen_asr_kwargs = {
             "max_inference_batch_size": max_inference_batch_size,
             "max_new_tokens": max_new_tokens,
-            **({"forced_aligner": forced_aligner_path, "forced_aligner_kwargs": fa_kwargs} if forced_aligner_path else {}),
-            **({"max_model_len": max_model_len} if max_model_len else {}),
         }
+        if forced_aligner_path:
+            qwen_asr_kwargs["forced_aligner"] = forced_aligner_path
+            qwen_asr_kwargs["forced_aligner_kwargs"] = fa_kwargs
+
+        # Merge and pass to qwen-asr (it will internally pass vLLM kwargs to vllm.LLM)
+        llm_kwargs = {**vllm_kwargs, **qwen_asr_kwargs}
 
         try:
             self.model = Qwen3ASRModel.LLM(**llm_kwargs)
-            logger.info("模型加载成功")
+            logger.info("Qwen3-ASR model loaded successfully")
         except Exception as e:
-            logger.error(f"模型加载失败: {e}")
-            raise DefaultServerErrorException(f"模型加载失败: {e}")
+            logger.error(f"Failed to load Qwen3-ASR model: {e}")
+            raise DefaultServerErrorException(f"Failed to load Qwen3-ASR model: {e}")
 
     @_handle_asr_error("转写")
     def transcribe_file(
