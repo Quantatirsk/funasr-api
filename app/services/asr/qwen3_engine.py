@@ -200,7 +200,7 @@ class Qwen3ASREngine(BaseASREngine):
 
         # Separate vLLM kwargs from qwen-asr kwargs
         # vLLM kwargs (passed to vllm.LLM)
-        vllm_kwargs = {
+        vllm_kwargs: dict[str, Any] = {
             "model": model_path,
             "gpu_memory_utilization": gpu_memory_utilization,
         }
@@ -208,7 +208,7 @@ class Qwen3ASREngine(BaseASREngine):
             vllm_kwargs["max_model_len"] = max_model_len
 
         # qwen-asr kwargs (NOT passed to vLLM, handled by qwen-asr library)
-        qwen_asr_kwargs = {
+        qwen_asr_kwargs: dict[str, Any] = {
             "max_inference_batch_size": max_inference_batch_size,
             "max_new_tokens": max_new_tokens,
         }
