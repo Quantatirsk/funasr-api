@@ -26,39 +26,49 @@
 - **智能远场过滤** - 流式 ASR 自动过滤远场声音和环境音，减少误触发
 - **智能音频分段** - 基于 VAD 的贪婪合并算法，自动切分长音频，避免包含过长静音
 - **GPU 批处理加速** - 支持批量推理，比逐个处理快 2-3 倍
-- **灵活配置** - 支持环境变量配置，可按需加载模型
+- **灵活配置** - 支持环境变量配置，按需加载模型
 
 ## 快速部署
 
 ### 1. Docker 部署(推荐)
 
 ```bash
-# 启动服务（GPU 版本）- 使用 docker-compose（推荐）
+# 复制并编辑配置
+cp .env.example .env
+# 编辑 .env 设置 ENABLED_MODELS 和 API_KEY（可选）
+
+# 启动服务（GPU 版本）
 docker-compose up -d
 
-# 或使用 docker run（GPU 版本）
-docker run -d --name funasr-api \
-  --gpus all \
-  -p 17003:8000 \
-  -v ./models/modelscope:/root/.cache/modelscope \
-  -v ./models/huggingface:/root/.cache/huggingface \
-  -v ./logs:/app/logs \
-  -v ./temp:/app/temp \
-  quantatrisk/funasr-api:gpu-latest
+# 或 CPU 版本
+docker-compose -f docker-compose-cpu.yml up -d
 ```
 
 服务访问地址：
-- **docker-compose**: `http://localhost:17003`（通过 Nginx 代理）
-- **docker run**: `http://localhost:17003`（直接映射）
+- **API 端点**: `http://localhost:17003`
 - **API 文档**: `http://localhost:17003/docs`
 
-> **注意**: docker-compose 配置使用 17003 端口作为 Nginx 入口，内部服务运行在 8000 端口
+**docker run 方式（替代）:**
 
-**模型挂载路径**（docker-compose 配置）：
-- **GPU 模式**: `./models/modelscope:/root/.cache/modelscope` 和 `./models/huggingface:/root/.cache/huggingface`
-- **CPU 模式**: 仅 `./models/modelscope:/root/.cache/modelscope`（Qwen3 模型需要 GPU）
+```bash
+# GPU 版本
+docker run -d --name funasr-api \
+  --gpus all \
+  -p 17003:8000 \
+  -e ENABLED_MODELS=auto \
+  -e API_KEY=your_api_key \
+  -v ./models/modelscope:/root/.cache/modelscope \
+  -v ./models/huggingface:/root/.cache/huggingface \
+  quantatrisk/funasr-api:gpu-latest
 
-**CPU 版本**请使用镜像 `quantatrisk/funasr-api:cpu-latest`
+# CPU 版本
+docker run -d --name funasr-api \
+  -p 17003:8000 \
+  -e ENABLED_MODELS=paraformer-large \
+  quantatrisk/funasr-api:cpu-latest
+```
+
+> **注意**: CPU 环境自动过滤 Qwen3 模型（vLLM 需要 GPU）
 
 **内网部署**：将 `models/` 目录打包复制到内网机器即可，详见 [MODEL_SETUP.md](./MODEL_SETUP.md)
 
@@ -69,8 +79,8 @@ docker run -d --name funasr-api \
 **系统要求:**
 
 - Python 3.10+
-- CUDA 12.1+(可选，用于 GPU 加速)
-- FFmpeg(音频格式转换)
+- CUDA 12.1+ (可选，用于 GPU 加速)
+- FFmpeg (音频格式转换)
 
 **安装步骤:**
 
@@ -100,13 +110,13 @@ python start.py
 | ------------------------------ | ------ | --------------------- | ------------------------------------- |
 | `file`                       | file   | 与 `audio_address` 二选一 | 音频文件                              |
 | `audio_address`              | string | 与 `file` 二选一      | 音频文件 URL（HTTP/HTTPS）            |
-| `model`                      | string | `qwen3-asr-1.7b`    | 模型选择                              |
-| `language`                   | string | 自动检测              | 语言代码 (zh/en/ja)，保留兼容         |
+| `model`                      | string | 自动检测              | 模型选择 (qwen3-asr-1.7b, qwen3-asr-0.6b, paraformer-large) |
+| `language`                   | string | 自动检测              | 语言代码 (zh/en/ja)                   |
 | `enable_speaker_diarization` | bool   | `true`              | 启用说话人分离                        |
 | `word_timestamps`            | bool   | `true`              | 返回字词级时间戳（仅Qwen3-ASR支持）  |
 | `response_format`            | string | `verbose_json`      | 输出格式                              |
-| `prompt`                     | string | -                     | 提示文本（保留兼容，暂未生效）        |
-| `temperature`                | float  | `0`                   | 采样温度（保留兼容，暂未生效）        |
+| `prompt`                     | string | -                     | 提示文本（保留兼容）                  |
+| `temperature`                | float  | `0`                   | 采样温度（保留兼容）                  |
 
 **音频输入方式:**
 - **文件上传**: 使用 `file` 参数上传音频文件（标准 OpenAI 方式）
@@ -118,7 +128,7 @@ python start.py
 # 使用 OpenAI SDK
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="any")
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="your_api_key")
 
 with open("audio.wav", "rb") as f:
     transcript = client.audio.transcriptions.create(
@@ -132,7 +142,7 @@ print(transcript.text)
 ```bash
 # 使用 curl
 curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
-  -H "Authorization: Bearer any" \
+  -H "Authorization: Bearer your_api_key" \
   -F "file=@audio.wav" \
   -F "model=paraformer-large" \
   -F "response_format=verbose_json" \
@@ -157,7 +167,7 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 
 | 参数                           | 类型   | 默认值             | 说明                                  |
 | ------------------------------ | ------ | ------------------ | ------------------------------------- |
-| `model_id`                   | string | `qwen3-asr-1.7b` | 模型 ID                               |
+| `model_id`                   | string | 自动检测         | 模型 ID                               |
 | `audio_address`              | string | -                  | 音频 URL（可选）                      |
 | `sample_rate`                | int    | `16000`          | 采样率                                |
 | `enable_speaker_diarization` | bool   | `true`           | 启用说话人分离                        |
@@ -259,65 +269,39 @@ curl -X POST "http://localhost:8000/stream/v1/asr?enable_speaker_diarization=tru
 | `qwen3-asr-0.6b`   | Qwen3-ASR 0.6B    | 轻量版多语言ASR，适合小显存环境          | 离线/实时 |
 | `paraformer-large` | Paraformer Large  | 高精度中文语音识别                       | 离线/实时 |
 
-**模型动态加载:**
+**模型选择:**
 
-系统根据显存自动选择合适的 Qwen3-ASR 模型：
-- **显存 >= 32GB**: 自动加载 `qwen3-asr-1.7b`
-- **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b`
-- **无 CUDA**: 仅加载 `paraformer-large`（Qwen3 需要 vLLM/GPU）
-
-通过 `QWEN_ASR_MODEL` 环境变量可强制指定模型版本。
-
-**预加载自定义模型:**
+使用 `ENABLED_MODELS` 环境变量控制加载哪些模型：
 
 ```bash
-# 启动时预加载 paraformer-large
-export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
+# 选项: auto, all, 或逗号分隔列表
+ENABLED_MODELS=auto                    # 自动检测 GPU 加载合适模型
+ENABLED_MODELS=all                     # 加载所有可用模型
+ENABLED_MODELS=paraformer-large        # 仅 Paraformer
+ENABLED_MODELS=qwen3-asr-0.6b          # 仅 Qwen3 0.6B
+ENABLED_MODELS=paraformer-large,qwen3-asr-0.6b  # 两者都加载
 ```
+
+**Auto 模式行为:**
+- **显存 >= 32GB**: 自动加载 `qwen3-asr-1.7b` + `paraformer-large`
+- **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b` + `paraformer-large`
+- **无 CUDA**: 仅 `paraformer-large`（Qwen3 需要 vLLM/GPU）
 
 ## 环境变量
 
 | 变量                               | 默认值       | 说明                                            |
 | ---------------------------------- | ------------ | ----------------------------------------------- |
-| `HOST`                           | `0.0.0.0`  | 服务绑定地址                                    |
-| `PORT`                           | `8000`     | 服务端口                                        |
-| `DEBUG`                          | `false`    | 调试模式                                        |
-| `DEVICE`                         | `auto`     | 设备选择:`auto`, `cpu`, `cuda:0`          |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS`    | -          | 预加载的自定义模型                              |
-| `APPTOKEN`                       | -          | API 访问令牌                                    |
-| `APPKEY`                         | -          | 应用密钥                                        |
-| `LOG_LEVEL`                      | `INFO`     | 日志级别（DEBUG/INFO/WARNING/ERROR）           |
-| `WORKERS`                        | `1`        | 工作进程数                                      |
-| `MAX_AUDIO_SIZE`                 | `2048`     | 最大音频文件大小（MB，支持单位如 2GB）         |
-
-### 性能优化配置
-
-| 变量                               | 默认值  | 说明                                       |
-| ---------------------------------- | ------- | ------------------------------------------ |
-| `ASR_BATCH_SIZE`                 | `4`     | ASR 批处理大小（GPU 建议 4，CPU 建议 2）  |
-| `INFERENCE_THREAD_POOL_SIZE`     | `4`     | 推理线程池大小（CPU 模式建议 1）          |
-| `MAX_SEGMENT_SEC`                | `90`    | 音频分段最大时长（秒）                     |
-| `WS_MAX_BUFFER_SIZE`             | `160000` | WebSocket 音频缓冲区大小（样本数）        |
-| `ENABLE_STREAMING_VLLM`          | `false` | 是否加载流式 VLLM 实例（节省显存）        |
-
-### 模型配置
-
-| 变量                               | 默认值   | 说明                                           |
-| ---------------------------------- | -------- | ---------------------------------------------- |
-| `QWEN_ASR_MODEL`                 | `auto`   | Qwen3-ASR 模型选择: auto/1.7B/0.6B            |
+| `ENABLED_MODELS`                 | `auto`       | 加载模型: `auto`, `all`, 或逗号分隔列表       |
+| `API_KEY`                        | -            | API 认证密钥（可选，未配置时无需认证）        |
+| `LOG_LEVEL`                      | `INFO`       | 日志级别（DEBUG/INFO/WARNING/ERROR）          |
+| `MAX_AUDIO_SIZE`                 | `2048`       | 最大音频文件大小（MB，支持单位如 2GB）        |
+| `ASR_BATCH_SIZE`                 | `4`          | ASR 批处理大小（GPU 建议 4，CPU 建议 2）      |
+| `MAX_SEGMENT_SEC`                | `90`         | 音频分段最大时长（秒）                        |
+| `ENABLE_STREAMING_VLLM`          | `false`      | 是否加载流式 VLLM 实例（节省显存）            |
 | `MODELSCOPE_PATH`                | `~/.cache/modelscope/hub/models` | ModelScope 缓存路径 |
 | `HF_HOME`                        | `~/.cache/huggingface` | HuggingFace 缓存路径（GPU 模式）     |
-| `ASR_ENABLE_LM`                  | `true`   | 是否启用语言模型（Paraformer）                |
-| `LM_WEIGHT`                      | `0.15`   | 语言模型权重（0.1-0.3）                       |
-| `LM_BEAM_SIZE`                   | `10`     | 语言模型解码 beam size                        |
-
-### 远场过滤配置
-
-| 变量                                 | 默认值   | 说明             |
-| ------------------------------------ | -------- | ---------------- |
-| `ASR_ENABLE_NEARFIELD_FILTER`      | `true` | 启用远场声音过滤 |
-| `ASR_NEARFIELD_RMS_THRESHOLD`      | `0.01` | RMS 能量阈值     |
-| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | 启用过滤日志     |
+| `ASR_ENABLE_LM`                  | `true`       | 是否启用语言模型（Paraformer）                |
+| `ASR_ENABLE_NEARFIELD_FILTER`    | `true`       | 启用远场声音过滤                              |
 
 > 详细配置说明请查看 [远场过滤文档](./nearfield_filter.md)
 
@@ -351,7 +335,7 @@ export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+本项目采用 MIT 许可证 - 查看 [LICENSE](../LICENSE) 文件了解详情。
 
 ## Star 历史
 
