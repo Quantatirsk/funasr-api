@@ -201,6 +201,7 @@ class Qwen3ASREngine(BaseASREngine):
         vllm_kwargs: dict[str, Any] = {
             "model": model_path,
             "gpu_memory_utilization": gpu_memory_utilization,
+            "local_files_only": True,  # 强制使用本地模型，禁止联网下载
         }
         if max_model_len is not None:
             vllm_kwargs["max_model_len"] = max_model_len
