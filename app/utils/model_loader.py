@@ -264,25 +264,21 @@ def preload_models() -> dict:
     paraformer_enabled = "paraformer-large" in models_to_load
 
     # 2. 预加载语音活动检测模型(VAD)
-    # VAD 是 Paraformer 的配套模型，只有启用 Paraformer 时才加载
-    if paraformer_enabled:
-        try:
-            from ..services.asr.engines import get_global_vad_model
+    # VAD 是所有 ASR 模型（包括 Qwen3-ASR 和 Paraformer）的配套模型，始终加载
+    try:
+        from ..services.asr.engines import get_global_vad_model
 
-            device = asr_engine.device if asr_engine else settings.DEVICE
-            vad_model = get_global_vad_model(device)
+        device = asr_engine.device if asr_engine else settings.DEVICE
+        vad_model = get_global_vad_model(device)
 
-            if vad_model:
-                result["vad_model"]["loaded"] = True
-            else:
-                result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
+        if vad_model:
+            result["vad_model"]["loaded"] = True
+        else:
+            result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
 
-        except Exception as e:
-            result["vad_model"]["error"] = str(e)
-            logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
-    else:
-        result["vad_model"]["error"] = "已跳过（Paraformer 未启用）"
-        logger.info("⏭️  跳过 VAD 模型加载（Paraformer 未启用）")
+    except Exception as e:
+        result["vad_model"]["error"] = str(e)
+        logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
 
     # 3. 预加载标点符号模型 (离线版)
     # PUNC 是 Paraformer 的配套模型，只有启用 Paraformer 时才加载
