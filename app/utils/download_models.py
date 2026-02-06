@@ -37,7 +37,7 @@ def _get_qwen_models() -> list[tuple[str, str]]:
         if models:
             # 添加强制对齐器（所有 Qwen 模型都需要）
             models.append(("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner"))
-            print(f"ENABLED_MODELS={config}，下载指定 Qwen 模型")
+            print(f"ENABLED_MODELS={config}，加载指定 Qwen 模型")
             return models
 
     # all 模式：下载所有 Qwen 模型
@@ -55,21 +55,21 @@ def _get_qwen_models() -> list[tuple[str, str]]:
         if torch.cuda.is_available():
             vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
             if vram >= 32:
-                print(f"ENABLED_MODELS=auto，显存 {vram:.1f}GB >= 32GB，下载 Qwen3-ASR-1.7B")
+                print(f"ENABLED_MODELS=auto，显存 {vram:.1f}GB >= 32GB，加载 Qwen3-ASR-1.7B")
                 return [("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
             else:
-                print(f"ENABLED_MODELS=auto，显存 {vram:.1f}GB < 32GB，下载 Qwen3-ASR-0.6B")
+                print(f"ENABLED_MODELS=auto，显存 {vram:.1f}GB < 32GB，加载 Qwen3-ASR-0.6B")
                 return [("Qwen/Qwen3-ASR-0.6B", "Qwen3-ASR 0.6B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
         else:
             print("无 CUDA，跳过 Qwen3-ASR（vLLM 不支持 CPU）")
-            return []  # CPU 模式下不下载 Qwen 模型
+            return []  # CPU 模式下不加载 Qwen 模型
     except ImportError:
-        print("ENABLED_MODELS=auto，默认下载 Qwen3-ASR-1.7B")
+        print("ENABLED_MODELS=auto，默认加载 Qwen3-ASR-1.7B")
         return [("Qwen/Qwen3-ASR-1.7B", "Qwen3-ASR 1.7B"), ("Qwen/Qwen3-ForcedAligner-0.6B", "Qwen3-ForcedAligner")]
 
 
 # === ModelScope 模型 (Paraformer) ===
-# 注意：仅列出代码中实际使用的模型，避免重复下载
+# 注意：仅列出代码中实际使用的模型，避免重复加载
 # 同一模型的不同命名（如 iic/ vs damo/）只保留实际使用的版本
 # 格式: (model_id, description, revision)  revision 为 None 表示使用最新版本
 MODELSCOPE_MODELS = [
