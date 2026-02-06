@@ -130,7 +130,7 @@ class AliyunWebSocketASRService:
         try:
             if hasattr(websocket, "headers"):
                 x_nls_token = websocket.headers.get("X-NLS-Token")
-                if settings.APPTOKEN and not x_nls_token:
+                if settings.API_KEY and not x_nls_token:
                     await self._send_task_failed(
                         websocket, task_id, "X-NLS-Token not found in ws header"
                     )

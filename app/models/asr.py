@@ -59,14 +59,6 @@ class ASRQueryParams(BaseModel):
         max_length=512,
     )
 
-    # 6. 认证参数
-    appkey: Optional[str] = Field(
-        default=None,
-        description="应用Appkey，用于API调用认证",
-        min_length=1,
-        max_length=64,
-    )
-
 
 # ============= 响应模型 =============
 

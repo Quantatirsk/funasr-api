@@ -23,8 +23,7 @@ class Settings:
     DEBUG: bool = False
 
     # 鉴权配置
-    APPTOKEN: Optional[str] = None  # 从环境变量APPTOKEN读取，如果为None则鉴权可选
-    APPKEY: Optional[str] = None  # 从环境变量APPKEY读取，如果为None则appkey可选
+    API_KEY: Optional[str] = None  # 从环境变量API_KEY读取，如果为None则鉴权可选
 
     # 设备配置
     DEVICE: str = "auto"  # auto, cpu, cuda:0, npu:0
@@ -93,6 +92,12 @@ class Settings:
     # true = 同时加载流式和非流式实例
     ENABLE_STREAMING_VLLM: bool = False
 
+    # 模型启动配置
+    #   "all"  = 加载所有可用模型
+    #   "auto" = 自动检测显存，加载 paraformer-large + 合适 Qwen（<32GB 用 0.6b，>=32GB 用 1.7b）
+    #   其他   = 逗号分隔精确指定，如 "paraformer-large" 或 "qwen3-asr-0.6b,qwen3-asr-1.7b"
+    ENABLED_MODELS: str = "auto"
+
     def __init__(self):
         """从环境变量读取配置"""
         self._load_from_env()
@@ -114,8 +119,7 @@ class Settings:
         )
 
         # 鉴权配置
-        self.APPTOKEN = os.getenv("APPTOKEN", self.APPTOKEN)
-        self.APPKEY = os.getenv("APPKEY", self.APPKEY)
+        self.API_KEY = os.getenv("API_KEY", self.API_KEY)
 
         # 设备配置
         self.DEVICE = os.getenv("DEVICE", self.DEVICE)
@@ -175,6 +179,9 @@ class Settings:
         self.ENABLE_STREAMING_VLLM = (
             os.getenv("ENABLE_STREAMING_VLLM", "false").lower() == "true"
         )
+
+        # 模型启动配置
+        self.ENABLED_MODELS = os.getenv("ENABLED_MODELS", self.ENABLED_MODELS)
 
     def _parse_size(self, size_str: str) -> int:
         """解析带单位的大小字符串
