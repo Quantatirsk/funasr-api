@@ -93,9 +93,80 @@ def print_model_statistics(result: dict, use_logger: bool = True):
     output("=" * 60)
 
 
+def _has_cuda() -> bool:
+    """检查是否有 CUDA 可用"""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def _detect_qwen_model_by_vram() -> str | None:
+    """根据显存检测应该使用哪个 Qwen 模型
+
+    < 32GB 用 0.6b, >= 32GB 用 1.7b
+    CPU 环境返回 None（vLLM 不支持 CPU）
+    """
+    if not _has_cuda():
+        return None
+
+    try:
+        import torch
+
+        min_vram = min(
+            torch.cuda.get_device_properties(i).total_memory / (1024**3)
+            for i in range(torch.cuda.device_count())
+        )
+        return "qwen3-asr-1.7b" if min_vram >= 32 else "qwen3-asr-0.6b"
+    except Exception:
+        return "qwen3-asr-0.6b"
+
+
+def _resolve_models_to_load(all_available_models: list[str], config: str) -> list[str]:
+    """解析配置，返回应加载的模型列表
+
+    CPU 环境下自动过滤 Qwen 模型（vLLM 不支持 CPU）
+
+    Args:
+        all_available_models: 所有可用模型ID
+        config: ENABLED_MODELS 配置值
+
+    Returns:
+        应加载的模型ID列表
+    """
+    cfg = config.strip().lower()
+    has_cuda = _has_cuda()
+
+    # all: 加载所有（CPU 下过滤 Qwen）
+    if cfg == "all":
+        if has_cuda:
+            return all_available_models
+        # CPU: 只加载非 Qwen 模型
+        return [m for m in all_available_models if not m.startswith("qwen3-asr-")]
+
+    # auto: 自动检测显存 + paraformer-large
+    if cfg == "auto":
+        qwen_model = _detect_qwen_model_by_vram()
+        models = []
+        if qwen_model and qwen_model in all_available_models:
+            models.append(qwen_model)
+        if "paraformer-large" in all_available_models:
+            models.append("paraformer-large")
+        return models
+
+    # 其他: 精确匹配，过滤掉不存在的（CPU 下额外过滤 Qwen）
+    requested = [m.strip() for m in config.split(",") if m.strip()]
+    result = [m for m in requested if m in all_available_models]
+    if not has_cuda:
+        # CPU 环境过滤 Qwen
+        result = [m for m in result if not m.startswith("qwen3-asr-")]
+    return result
+
+
 def preload_models() -> dict:
     """
-    预加载所有需要的模型（所有配置的ASR模型）
+    预加载所有需要的模型（根据 ENABLE_* 配置过滤）
 
     Returns:
         dict: 包含加载状态的字典
@@ -116,16 +187,18 @@ def preload_models() -> dict:
     }
 
     from ..core.config import settings
+    from ..services.asr.registry import register_loaded_model
 
     # 初始化变量，避免未绑定错误
     asr_engine = None
     model_manager = None
 
     logger.info("=" * 60)
-    logger.info("🔄 开始预加载所有模型...")
+    logger.info("🔄 开始预加载模型...")
+    logger.info(f"   配置: ENABLED_MODELS={settings.ENABLED_MODELS}")
     logger.info("=" * 60)
 
-    # 1. 预加载所有配置的ASR模型
+    # 1. 预加载所有配置的ASR模型（根据 ENABLE_* 配置过滤）
     try:
         from ..services.asr.manager import get_model_manager
 
@@ -135,19 +208,14 @@ def preload_models() -> dict:
         all_models = model_manager.list_models()
         model_ids = [m["id"] for m in all_models]
 
-        # 根据配置过滤要加载的模型
-        # 只加载默认模型和显式指定的模型
-        default_model = model_manager._default_model_id
-        models_to_load: list[str] = [default_model] if default_model and default_model in model_ids else []
+        # 根据配置解析应加载的模型
+        models_to_load = _resolve_models_to_load(model_ids, settings.ENABLED_MODELS)
 
-        # 如果默认模型是 qwen3-asr-0.6b，跳过 qwen3-asr-1.7b
-        # 如果默认模型是 qwen3-asr-1.7b，加载它（以及可能的 0.6b 用于其他用途）
+        # 如果没有启用任何模型，发出警告
+        if not models_to_load:
+            logger.warning(f"⚠️  没有启用任何 ASR 模型！请检查 ENABLED_MODELS 配置: {settings.ENABLED_MODELS}")
 
-        # 添加 paraformer-large（如果配置了）
-        if "paraformer-large" in model_ids:
-            models_to_load.append("paraformer-large")
-
-        logger.info(f"📋 发现 {len(model_ids)} 个模型配置，将加载 {len(models_to_load)} 个: {', '.join(models_to_load)}")
+        logger.info(f"📋 发现 {len(model_ids)} 个模型配置，将加载 {len(models_to_load)} 个: {', '.join(models_to_load) if models_to_load else '（无）'}")
 
         for model_id in models_to_load:
             result["asr_models"][model_id] = {"loaded": False, "error": None}
@@ -157,6 +225,7 @@ def preload_models() -> dict:
 
                 if engine.is_model_loaded():
                     result["asr_models"][model_id]["loaded"] = True
+                    register_loaded_model(model_id)  # 注册到全局注册表
 
                     # 保存第一个成功加载的引擎引用（用于后续获取device）
                     if asr_engine is None:
@@ -165,7 +234,6 @@ def preload_models() -> dict:
                     result["asr_models"][model_id]["error"] = "模型加载后未正确初始化"
 
                 # 为 Qwen3-ASR 加载流式专用实例（完全隔离状态）
-                # 根据实际加载的模型决定流式实例
                 # 仅在 ENABLE_STREAMING_VLLM=true 时加载流式实例（默认 false，节省显存）
                 if settings.ENABLE_STREAMING_VLLM and model_id.startswith("qwen3-asr-"):
                     streaming_key = f"{model_id}-streaming"
@@ -184,41 +252,55 @@ def preload_models() -> dict:
 
     except Exception as e:
         logger.error(f"❌ 获取模型管理器失败: {e}")
+        models_to_load = []
 
-    # 3. 预加载语音活动检测模型(VAD)
-    try:
-        from ..services.asr.engines import get_global_vad_model
+    # 辅助函数：检查是否要加载 paraformer
+    paraformer_enabled = "paraformer-large" in models_to_load
 
-        device = asr_engine.device if asr_engine else settings.DEVICE
-        vad_model = get_global_vad_model(device)
+    # 2. 预加载语音活动检测模型(VAD)
+    # VAD 是 Paraformer 的配套模型，只有启用 Paraformer 时才加载
+    if paraformer_enabled:
+        try:
+            from ..services.asr.engines import get_global_vad_model
 
-        if vad_model:
-            result["vad_model"]["loaded"] = True
-        else:
-            result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
+            device = asr_engine.device if asr_engine else settings.DEVICE
+            vad_model = get_global_vad_model(device)
 
-    except Exception as e:
-        result["vad_model"]["error"] = str(e)
-        logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
+            if vad_model:
+                result["vad_model"]["loaded"] = True
+            else:
+                result["vad_model"]["error"] = "语音活动检测模型(VAD)加载后返回None"
 
-    # 4. 预加载标点符号模型 (离线版)
-    try:
-        from ..services.asr.engines import get_global_punc_model
+        except Exception as e:
+            result["vad_model"]["error"] = str(e)
+            logger.error(f"❌ 语音活动检测模型(VAD)加载失败: {e}")
+    else:
+        result["vad_model"]["error"] = "已跳过（Paraformer 未启用）"
+        logger.info("⏭️  跳过 VAD 模型加载（Paraformer 未启用）")
 
-        device = asr_engine.device if asr_engine else settings.DEVICE
-        punc_model = get_global_punc_model(device)
+    # 3. 预加载标点符号模型 (离线版)
+    # PUNC 是 Paraformer 的配套模型，只有启用 Paraformer 时才加载
+    if paraformer_enabled:
+        try:
+            from ..services.asr.engines import get_global_punc_model
 
-        if punc_model:
-            result["punc_model"]["loaded"] = True
-        else:
-            result["punc_model"]["error"] = "标点符号模型加载后返回None"
+            device = asr_engine.device if asr_engine else settings.DEVICE
+            punc_model = get_global_punc_model(device)
 
-    except Exception as e:
-        result["punc_model"]["error"] = str(e)
-        logger.error(f"❌ 标点符号模型(离线)加载失败: {e}")
+            if punc_model:
+                result["punc_model"]["loaded"] = True
+            else:
+                result["punc_model"]["error"] = "标点符号模型加载后返回None"
 
-    # 5. 预加载实时标点符号模型 (如果启用)
-    if settings.ASR_ENABLE_REALTIME_PUNC:
+        except Exception as e:
+            result["punc_model"]["error"] = str(e)
+            logger.error(f"❌ 标点符号模型(离线)加载失败: {e}")
+    else:
+        result["punc_model"]["error"] = "已跳过（Paraformer 未启用）"
+        logger.info("⏭️  跳过标点模型加载（Paraformer 未启用）")
+
+    # 4. 预加载实时标点符号模型 (如果启用)
+    if paraformer_enabled and settings.ASR_ENABLE_REALTIME_PUNC:
         try:
             from ..services.asr.engines import get_global_punc_realtime_model
 
@@ -233,8 +315,12 @@ def preload_models() -> dict:
         except Exception as e:
             result["punc_realtime_model"]["error"] = str(e)
             logger.error(f"❌ 实时标点符号模型加载失败: {e}")
+    else:
+        skip_reason = "Paraformer 未启用" if not paraformer_enabled else "实时标点被禁用"
+        result["punc_realtime_model"]["error"] = f"已跳过（{skip_reason}）"
+        logger.info(f"⏭️  跳过实时标点模型加载（{skip_reason}）")
 
-    # 6. 预加载说话人分离模型 (CAM++)
+    # 5. 预加载说话人分离模型 (CAM++) - 必需模型，始终加载
     try:
         from ..utils.speaker_diarizer import get_global_diarization_pipeline
 
