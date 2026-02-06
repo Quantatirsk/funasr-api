@@ -217,7 +217,7 @@ async def list_models(request: Request):
     """列出可用模型 (OpenAI 兼容)"""
     # 可选鉴权
     result, _ = validate_token(request)
-    if not result and settings.APPTOKEN:
+    if not result and settings.API_KEY:
         response_data = create_error_response(
             error_code="AUTHENTICATION_FAILED",
             message="Invalid authentication",
@@ -423,14 +423,14 @@ async def create_transcription(
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            if settings.APPTOKEN and token != settings.APPTOKEN:
+            if settings.API_KEY and token != settings.API_KEY:
                 response_data = create_error_response(
                     error_code="AUTHENTICATION_FAILED",
                     message="Invalid API key",
                 )
                 return JSONResponse(content=response_data, status_code=401)
-        elif settings.APPTOKEN:
-            # 如果配置了 APPTOKEN 但请求没有提供
+        elif settings.API_KEY:
+            # 如果配置了 API_KEY 但请求没有提供
             result, _ = validate_token(request)
             if not result:
                 response_data = create_error_response(

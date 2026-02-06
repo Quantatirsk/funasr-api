@@ -142,8 +142,8 @@ class ModelManager:
                 if model_config.get("default", False):
                     self._default_model_id = model_id
 
-            # 根据 QWEN_ASR_MODEL 环境变量选择默认模型
-            self._default_model_id = self._select_qwen_model()
+            # 根据 ENABLED_MODELS 选择默认模型
+            self._default_model_id = self._select_default_model()
 
             if not self._default_model_id and self._models_config:
                 # 如果没有指定默认模型，选择第一个
@@ -152,28 +152,35 @@ class ModelManager:
         except (json.JSONDecodeError, KeyError) as e:
             raise DefaultServerErrorException(f"模型配置文件格式错误: {str(e)}")
 
-    def _select_qwen_model(self) -> Optional[str]:
-        """根据配置选择 Qwen3-ASR 模型
+    def _select_default_model(self) -> Optional[str]:
+        """根据 ENABLED_MODELS 选择默认模型
 
         Returns:
-            选择的模型ID，如果不是 Qwen 模型则返回现有默认
+            选择的模型ID，基于 ENABLED_MODELS 配置
         """
-        model_config = settings.QWEN_ASR_MODEL
+        enabled_models = settings.ENABLED_MODELS.strip().lower()
 
-        # 直接指定模型ID
-        if model_config == "Qwen3-ASR-1.7B":
-            if "qwen3-asr-1.7b" in self._models_config:
-                logger.info("使用 Qwen3-ASR-1.7B（强制指定）")
-                return "qwen3-asr-1.7b"
-        elif model_config == "Qwen3-ASR-0.6B":
-            if "qwen3-asr-0.6b" in self._models_config:
-                logger.info("使用 Qwen3-ASR-0.6B（强制指定）")
-                return "qwen3-asr-0.6b"
-        elif model_config == "auto":
-            # 自动检测显存
+        # all: 优先使用 1.7b，否则 0.6b，否则 paraformer
+        if enabled_models == "all":
+            for model_id in ["qwen3-asr-1.7b", "qwen3-asr-0.6b", "paraformer-large"]:
+                if model_id in self._models_config:
+                    return model_id
+            return self._default_model_id
+
+        # auto: 根据显存自动选择
+        if enabled_models == "auto":
             selected = self._auto_select_by_vram()
             if selected:
                 return selected
+            # 显存选择失败，回退到配置中的第一个
+            return self._default_model_id
+
+        # 其他: 解析逗号分隔列表，优先使用 Qwen 模型，其次是 Paraformer
+        requested = [m.strip() for m in settings.ENABLED_MODELS.split(",") if m.strip()]
+        for model in requested:
+            model_lower = model.lower()
+            if model_lower in self._models_config:
+                return model_lower
 
         return self._default_model_id
 
@@ -187,7 +194,6 @@ class ModelManager:
             import torch
 
             if not torch.cuda.is_available():
-                logger.info("无 CUDA，禁用 Qwen3-ASR（vLLM 不支持 CPU），使用 paraformer-large")
                 return "paraformer-large" if "paraformer-large" in self._models_config else None
 
             # 获取所有 GPU 的显存，使用最小的那个
@@ -201,11 +207,9 @@ class ModelManager:
 
             if total_vram >= 32:
                 if "qwen3-asr-1.7b" in self._models_config:
-                    logger.info(f"显存充足 ({total_vram:.1f}GB >= 32GB)，使用 Qwen3-ASR-1.7B")
                     return "qwen3-asr-1.7b"
             else:
                 if "qwen3-asr-0.6b" in self._models_config:
-                    logger.info(f"显存有限 ({total_vram:.1f}GB < 32GB)，使用 Qwen3-ASR-0.6B")
                     return "qwen3-asr-0.6b"
 
         except Exception as e:

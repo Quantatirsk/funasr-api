@@ -3,7 +3,7 @@ services:
     image: nginx:1.27-alpine
     container_name: funasr-nginx-cpu
     ports:
-      - "17003:80"
+      - "${NGINX_PORT:-17003}:80"
     volumes:
       - ./funasr.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -12,7 +12,6 @@ services:
     networks:
       - funasr-net
 
-  # CPU 模式：仅使用 Paraformer（Qwen3 需要 GPU/vLLM）
   funasr-api:
     image: quantatrisk/funasr-api:cpu-latest
     container_name: funasr-api-cpu
@@ -21,23 +20,11 @@ services:
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
-      # CPU 模式下只使用 ModelScope 模型（Paraformer）
       - ./models/modelscope:/root/.cache/modelscope
     environment:
-      - DEBUG=false
-      - LOG_LEVEL=INFO
-      - HOST=0.0.0.0
-      - PORT=8000
-      - DEVICE=cpu
-      # 显式设置 ModelScope 缓存路径，确保宿主机挂载和容器内路径一致
-      - MODELSCOPE_PATH=/root/.cache/modelscope/hub/models
-      # CPU 模式下强制使用 Paraformer（Qwen3 需要 vLLM/GPU）
-      # 可选：AUTO_LOAD_CUSTOM_ASR_MODELS=paraformer-large
-      - WORKERS=1
-      # CPU 模式下适当增加 workers（无 GPU 内存限制）
-      - INFERENCE_THREAD_POOL_SIZE=1
-      - ASR_BATCH_SIZE=2
-      - MAX_AUDIO_SIZE=2048
+      API_KEY: ${API_KEY:-}
+      ENABLED_MODELS: ${ENABLED_MODELS:-paraformer-large}
+      MODELSCOPE_PATH: /root/.cache/modelscope/hub/models
     restart: unless-stopped
     networks:
       - funasr-net

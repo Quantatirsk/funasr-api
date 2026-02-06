@@ -23,10 +23,7 @@ from ...core.exceptions import (
     UnsupportedSampleRateException,
     DefaultServerErrorException,
 )
-from ...core.security import (
-    validate_token,
-    validate_request_appkey
-)
+from ...core.security import validate_token
 from ...models.common import SampleRate
 from ...models.asr import (
     ASRResponse,
@@ -275,18 +272,6 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
             },
             # 6. 认证参数
             {
-                "name": "appkey",
-                "in": "query",
-                "required": False,
-                "schema": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "example": "default",
-                },
-                "description": "应用 Appkey，用于 API 调用认证。未配置 APPKEY 环境变量时可忽略",
-            },
-            {
                 "name": "X-NLS-Token",
                 "in": "header",
                 "required": False,
@@ -296,7 +281,7 @@ async def get_asr_params(request: Request) -> ASRQueryParams:
                     "maxLength": 256,
                     "example": "",
                 },
-                "description": "访问令牌，用于身份认证。未配置 APPTOKEN 环境变量时可忽略",
+                "description": "访问令牌，用于身份认证。未配置 API_KEY 环境变量时可忽略",
             },
         ],
         "requestBody": {
@@ -334,13 +319,8 @@ async def asr_transcribe(
         if not result:
             raise AuthenticationException(content, task_id)
 
-        # 验证appkey参数
-        result, content = validate_request_appkey(params.appkey or "", task_id)
-        if not result:
-            raise AuthenticationException(content, task_id)
-
         # 使用音频服务处理音频
-        target_sample_rate = params.sample_rate if params.sample_rate else 16000
+        target_sample_rate = int(params.sample_rate) if params.sample_rate else 16000
         normalized_audio_path, audio_duration, audio_path = await audio_service.process_from_request(
             request=request,
             audio_address=params.audio_address,

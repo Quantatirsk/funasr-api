@@ -3,7 +3,7 @@ services:
     image: nginx:1.27-alpine
     container_name: funasr-nginx
     ports:
-      - "17003:80"
+      - "${NGINX_PORT:-17003}:80"
     volumes:
       - ./funasr.conf:/etc/nginx/conf.d/default.conf
     depends_on:
@@ -12,7 +12,6 @@ services:
     networks:
       - funasr-net
 
-  # 单节点：用线程池实现并发与排队（适合离线长音频）
   funasr-api:
     image: quantatrisk/funasr-api:gpu-latest
     container_name: funasr-api
@@ -21,44 +20,13 @@ services:
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
-      # 方案1: 项目本地目录（模型与项目放在一起，便于备份）
       - ./models/modelscope:/root/.cache/modelscope
       - ./models/huggingface:/root/.cache/huggingface
-      # 方案2: 用户级缓存目录（多项目共享，节省空间）
-      # - ~/.cache/modelscope:/root/.cache/modelscope
-      # - ~/.cache/huggingface:/root/.cache/huggingface
     environment:
-      - DEBUG=false
-      - LOG_LEVEL=INFO
-      - HOST=0.0.0.0
-      - PORT=8000
-      - DEVICE=cuda:0
-      # 抑制第三方库的 SyntaxWarning（pydub 等）
-      - PYTHONWARNINGS=ignore::SyntaxWarning
-      # 显式设置模型缓存路径，确保宿主机挂载和容器内路径一致
-      - MODELSCOPE_PATH=/root/.cache/modelscope/hub/models
-      - HF_HOME=/root/.cache/huggingface
-      # 离线模式配置（内网/无网络环境必需）
-      # 强制 HuggingFace 完全离线，阻止所有联网请求到 huggingface.co
-      # 如需启用，取消下面三行的注释：
-      # - HF_HUB_OFFLINE=1
-      # - TRANSFORMERS_OFFLINE=1
-      # Qwen3-ASR 模型选择: auto (自动检测显存), Qwen3-ASR-1.7B, Qwen3-ASR-0.6B
-      # - QWEN_ASR_MODEL=auto
-      # 流式 VLLM 实例控制: false (默认，只加载非流式，节省显存), true (同时加载流式实例)
-      # - ENABLE_STREAMING_VLLM=false
-      - NVIDIA_VISIBLE_DEVICES=0
-      # 多进程会复制模型、显存成倍增加；离线长音频建议保持 1
-      - WORKERS=1
-      # 推理线程池大小决定"同时跑推理的数量"，其余请求会在队列中等待
-      # 建议从 2~4 开始逐步调参
-      - INFERENCE_THREAD_POOL_SIZE=4
-      # ASR 批处理大小（同时推理的音频片段数）
-      # 批处理利用 GPU 并行计算，可提升 2-3 倍速度，建议 2-8
-      - ASR_BATCH_SIZE=4
-      # 最大音频文件大小限制（单位：MB，默认 2048 = 2GB）
-      # 支持格式：纯数字表示 MB，或带单位如 2GB
-      - MAX_AUDIO_SIZE=2048
+      API_KEY: ${API_KEY:-}
+      ENABLED_MODELS: ${ENABLED_MODELS:-auto}
+      MODELSCOPE_PATH: /root/.cache/modelscope/hub/models
+      HF_HOME: /root/.cache/huggingface
     restart: unless-stopped
     networks:
       - funasr-net
@@ -67,7 +35,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["0"]
+              count: all
               capabilities: [gpu]
 
 networks:

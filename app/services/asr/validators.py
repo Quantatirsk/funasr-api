@@ -41,16 +41,31 @@ def _detect_qwen_model_by_vram() -> str:
 def _get_active_qwen_model() -> str:
     """获取当前激活的 Qwen 模型
 
-    根据 QWEN_ASR_MODEL 环境变量或显存自动检测
+    根据 ENABLED_MODELS 环境变量配置返回应使用的 Qwen 模型
     """
-    model_config = settings.QWEN_ASR_MODEL
+    enabled_models = settings.ENABLED_MODELS.strip().lower()
 
-    if model_config == "Qwen3-ASR-1.7B":
-        return "qwen3-asr-1.7b"
-    elif model_config == "Qwen3-ASR-0.6B":
-        return "qwen3-asr-0.6b"
-    else:  # auto
+    # all: 优先使用 1.7b，否则 0.6b
+    if enabled_models == "all":
+        all_models = _load_supported_models()
+        if "qwen3-asr-1.7b" in all_models:
+            return "qwen3-asr-1.7b"
+        elif "qwen3-asr-0.6b" in all_models:
+            return "qwen3-asr-0.6b"
         return _detect_qwen_model_by_vram()
+
+    # auto: 根据显存自动选择
+    if enabled_models == "auto":
+        return _detect_qwen_model_by_vram()
+
+    # 解析逗号分隔列表，查找指定的 Qwen 模型
+    requested = [m.strip().lower() for m in settings.ENABLED_MODELS.split(",") if m.strip()]
+    for model in requested:
+        if model in ["qwen3-asr-1.7b", "qwen3-asr-0.6b"]:
+            return model
+
+    # 默认回退
+    return _detect_qwen_model_by_vram()
 
 
 def _load_supported_models() -> List[str]:
@@ -68,32 +83,66 @@ def _load_supported_models() -> List[str]:
 
 
 def _get_dynamic_model_list() -> List[str]:
-    """获取动态的模型列表（根据显存配置）
+    """获取实际已加载的模型列表
 
-    返回的列表中，Qwen 模型在前，Paraformer 在后
-    且只返回当前显存配置下可用的 Qwen 模型
-    无 CUDA 时禁用 Qwen3（vLLM 不支持 CPU），只返回 paraformer-large
+    优先从模型注册表读取（实际已加载的模型）
+    若注册表为空（如启动阶段），返回配置文件中启用的模型
+
+    Returns:
+        已加载模型 ID 列表，按 Qwen 优先、Paraformer 其次排序
     """
+    from .registry import get_available_models
+
+    available = get_available_models()
+
+    # 如果注册表有数据，直接返回（按 Qwen 优先排序）
+    if available:
+        # 排序：qwen 在前，paraformer 在后
+        def sort_key(m: str) -> tuple:
+            if m.startswith("qwen"):
+                return (0, m)
+            elif m.startswith("paraformer"):
+                return (1, m)
+            else:
+                return (2, m)
+        return sorted(available, key=sort_key)
+
+    # 注册表为空时，返回配置文件中启用的模型（向后兼容）
+    all_models = _load_supported_models()
+
     import torch
+    has_cuda = torch.cuda.is_available()
 
-    if not torch.cuda.is_available():
-        # CPU 模式：禁用 Qwen3，只返回 paraformer
-        return ["paraformer-large"] if "paraformer-large" in _load_supported_models() else []
-
-    active_qwen = _get_active_qwen_model()
-
-    # Qwen 模型在前，按显存配置只返回可用的那个
-    models = [active_qwen]
-
+    models = []
+    # Qwen 模型在前
+    if has_cuda:
+        active_qwen = _get_active_qwen_model()
+        if active_qwen in all_models:
+            models.append(active_qwen)
     # Paraformer 在后
-    if "paraformer-large" in _load_supported_models():
+    if "paraformer-large" in all_models:
         models.append("paraformer-large")
 
     return models
 
 
 def _get_default_model() -> str:
-    """获取默认模型（根据显存配置）"""
+    """获取默认模型
+
+    优先从已加载模型中选择（Qwen > Paraformer）
+    若无已加载模型，返回配置中应激活的 Qwen 模型
+    """
+    from .registry import get_available_models
+
+    available = get_available_models()
+    if available:
+        # 优先返回 Qwen 模型，其次 Paraformer
+        for m in available:
+            if m.startswith("qwen"):
+                return m
+        return available[0]
+
+    # 向后兼容：返回配置中应激活的模型
     return _get_active_qwen_model()
 
 
@@ -124,8 +173,8 @@ class AudioParamsValidator:
         Raises:
             InvalidParameterException: 当模型ID不支持时
         """
-        # 动态获取最新支持的模型列表（避免类变量缓存问题）
-        supported_models = _load_supported_models()
+        # 获取实际可用的模型列表（已加载或配置中启用）
+        available_models = _get_dynamic_model_list()
 
         if not model_id:
             return _get_default_model()
@@ -134,9 +183,9 @@ class AudioParamsValidator:
         if model_id.lower() == "qwen3-asr":
             return _get_active_qwen_model()
 
-        if model_id not in supported_models:
+        if model_id not in available_models:
             raise InvalidParameterException(
-                f"不支持的模型ID: {model_id}。支持的模型: {', '.join(supported_models)}"
+                f"不支持的模型ID: {model_id}。可用模型: {', '.join(available_models)}"
             )
 
         return model_id

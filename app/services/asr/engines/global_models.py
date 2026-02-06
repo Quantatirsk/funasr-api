@@ -32,6 +32,13 @@ _punc_realtime_model_lock = threading.Lock()
 _punc_realtime_inference_lock = threading.Lock()  # 推理互斥锁，防止并发状态混乱
 
 
+def _resolve_device(device: str) -> str:
+    """解析设备字符串，将 auto 转换为实际的设备"""
+    if device == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return device
+
+
 def get_global_vad_model(device: str):
     """获取全局语音活动检测(VAD)模型实例（线程安全，双重检查锁定）"""
     global _global_vad_model
@@ -44,9 +51,12 @@ def get_global_vad_model(device: str):
                     resolved_vad_path = resolve_model_path(settings.VAD_MODEL)
                     logger.info(f"正在加载全局语音活动检测(VAD)模型: {resolved_vad_path}")
 
+                    # 解析 auto 设备
+                    resolved_device = _resolve_device(device)
+
                     _global_vad_model = AutoModel(
                         model=resolved_vad_path,
-                        device=device,
+                        device=resolved_device,
                         speech_noise_thres=0.6,  # VAD 语音噪声阈值（FunASR默认0.6，设为0.7稍微严格一些，分段更碎）
                         **settings.FUNASR_AUTOMODEL_KWARGS,
                     )
@@ -89,9 +99,12 @@ def get_global_punc_model(device: str):
                     resolved_punc_path = resolve_model_path(settings.PUNC_MODEL)
                     logger.info(f"正在加载全局标点符号模型（离线）: {resolved_punc_path}")
 
+                    # 解析 auto 设备
+                    resolved_device = _resolve_device(device)
+
                     _global_punc_model = AutoModel(
                         model=resolved_punc_path,
-                        device=device,
+                        device=resolved_device,
                         **settings.FUNASR_AUTOMODEL_KWARGS,
                     )
                     logger.info("全局标点符号模型（离线）加载成功")
@@ -133,9 +146,12 @@ def get_global_punc_realtime_model(device: str):
                     resolved_punc_realtime_path = resolve_model_path(settings.PUNC_REALTIME_MODEL)
                     logger.info(f"正在加载全局标点符号模型（实时）: {resolved_punc_realtime_path}")
 
+                    # 解析 auto 设备
+                    resolved_device = _resolve_device(device)
+
                     _global_punc_realtime_model = AutoModel(
                         model=resolved_punc_realtime_path,
-                        device=device,
+                        device=resolved_device,
                         **settings.FUNASR_AUTOMODEL_KWARGS,
                     )
                     logger.info("全局标点符号模型（实时）加载成功")

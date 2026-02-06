@@ -28,39 +28,49 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 - **Smart Far-Field Filtering** - Automatically filters far-field sounds and ambient noise in streaming ASR
 - **Intelligent Audio Segmentation** - VAD-based greedy merge algorithm for automatic long audio splitting
 - **GPU Batch Processing** - Batch inference support, 2-3x faster than sequential processing
-- **Flexible Configuration** - Environment variable based configuration
+- **Flexible Configuration** - Environment variable based configuration, load models on demand
 
 ## Quick Deployment
 
 ### 1. Docker Deployment (Recommended)
 
 ```bash
-# Start service (GPU version) - using docker-compose (recommended)
+# Copy and edit configuration
+cp .env.example .env
+# Edit .env to set ENABLED_MODELS and API_KEY (optional)
+
+# Start service (GPU version)
 docker-compose up -d
 
-# Or using docker run (GPU version)
-docker run -d --name funasr-api \
-  --gpus all \
-  -p 17003:8000 \
-  -v ./models/modelscope:/root/.cache/modelscope \
-  -v ./models/huggingface:/root/.cache/huggingface \
-  -v ./logs:/app/logs \
-  -v ./temp:/app/temp \
-  quantatrisk/funasr-api:gpu-latest
+# Or CPU version
+docker-compose -f docker-compose-cpu.yml up -d
 ```
 
 Service URLs:
-- **docker-compose**: `http://localhost:17003` (via Nginx proxy)
-- **docker run**: `http://localhost:17003` (direct mapping)
+- **API Endpoint**: `http://localhost:17003`
 - **API Docs**: `http://localhost:17003/docs`
 
-> **Note**: docker-compose uses port 17003 as Nginx entrypoint, internal service runs on port 8000
+**docker run (alternative):**
 
-**Model Mount Paths** (docker-compose configuration):
-- **GPU Mode**: `./models/modelscope:/root/.cache/modelscope` and `./models/huggingface:/root/.cache/huggingface`
-- **CPU Mode**: Only `./models/modelscope:/root/.cache/modelscope` (Qwen3 models require GPU)
+```bash
+# GPU version
+docker run -d --name funasr-api \
+  --gpus all \
+  -p 17003:8000 \
+  -e ENABLED_MODELS=auto \
+  -e API_KEY=your_api_key \
+  -v ./models/modelscope:/root/.cache/modelscope \
+  -v ./models/huggingface:/root/.cache/huggingface \
+  quantatrisk/funasr-api:gpu-latest
 
-**CPU Version**: Use image `quantatrisk/funasr-api:cpu-latest`
+# CPU version
+docker run -d --name funasr-api \
+  -p 17003:8000 \
+  -e ENABLED_MODELS=paraformer-large \
+  quantatrisk/funasr-api:cpu-latest
+```
+
+> **Note**: CPU environment automatically filters Qwen3 models (vLLM requires GPU)
 
 **Offline Deployment**: Pack and copy the `models/` directory to the offline machine. See [MODEL_SETUP.md](./docs/MODEL_SETUP.md) for details.
 
@@ -102,7 +112,7 @@ python start.py
 |-----------|------|---------|-------------|
 | `file` | file | Mutually exclusive with `audio_address` | Audio file |
 | `audio_address` | string | Mutually exclusive with `file` | Audio file URL (HTTP/HTTPS) |
-| `model` | string | `qwen3-asr-1.7b` | Model selection |
+| `model` | string | auto-detect | Model selection (qwen3-asr-1.7b, qwen3-asr-0.6b, paraformer-large) |
 | `language` | string | Auto-detect | Language code (zh/en/ja) |
 | `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
 | `word_timestamps` | bool | `true` | Return word-level timestamps (Qwen3-ASR only) |
@@ -120,7 +130,7 @@ python start.py
 # Using OpenAI SDK
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="any")
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="your_api_key")
 
 with open("audio.wav", "rb") as f:
     transcript = client.audio.transcriptions.create(
@@ -134,7 +144,7 @@ print(transcript.text)
 ```bash
 # Using curl
 curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
-  -H "Authorization: Bearer any" \
+  -H "Authorization: Bearer your_api_key" \
   -F "file=@audio.wav" \
   -F "model=paraformer-large" \
   -F "response_format=verbose_json" \
@@ -159,7 +169,7 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `model_id` | string | `qwen3-asr-1.7b` | Model ID |
+| `model_id` | string | auto-detect | Model ID |
 | `audio_address` | string | - | Audio URL (optional) |
 | `sample_rate` | int | `16000` | Sample rate |
 | `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
@@ -261,65 +271,39 @@ Automatic long audio segmentation:
 | `qwen3-asr-0.6b` | Qwen3-ASR 0.6B | Lightweight multilingual ASR, suitable for low VRAM environments | Offline/Realtime |
 | `paraformer-large` | Paraformer Large | High-precision Chinese speech recognition | Offline/Realtime |
 
-**Dynamic Model Loading:**
+**Model Selection:**
 
-System automatically selects appropriate Qwen3-ASR model based on VRAM:
-- **VRAM >= 32GB**: Auto-load `qwen3-asr-1.7b`
-- **VRAM < 32GB**: Auto-load `qwen3-asr-0.6b`
-- **No CUDA**: Only load `paraformer-large` (Qwen3 requires vLLM/GPU)
-
-Use `QWEN_ASR_MODEL` environment variable to force specific model version.
-
-**Preload Custom Models:**
+Use `ENABLED_MODELS` environment variable to control which models to load:
 
 ```bash
-# Preload paraformer-large on startup
-export AUTO_LOAD_CUSTOM_ASR_MODELS="paraformer-large"
+# Options: auto, all, or comma-separated list
+ENABLED_MODELS=auto                    # Auto-detect GPU and load appropriate models
+ENABLED_MODELS=all                     # Load all available models
+ENABLED_MODELS=paraformer-large        # Only Paraformer
+ENABLED_MODELS=qwen3-asr-0.6b          # Only Qwen3 0.6B
+ENABLED_MODELS=paraformer-large,qwen3-asr-0.6b  # Both
 ```
+
+**Auto mode behavior:**
+- **VRAM >= 32GB**: Auto-load `qwen3-asr-1.7b` + `paraformer-large`
+- **VRAM < 32GB**: Auto-load `qwen3-asr-0.6b` + `paraformer-large`
+- **No CUDA**: Only `paraformer-large` (Qwen3 requires vLLM/GPU)
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST` | `0.0.0.0` | Service bind address |
-| `PORT` | `8000` | Service port |
-| `DEBUG` | `false` | Debug mode |
-| `DEVICE` | `auto` | Device selection: `auto`, `cpu`, `cuda:0` |
-| `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | Preload custom models |
-| `APPTOKEN` | - | API access token |
-| `APPKEY` | - | App key |
+| `ENABLED_MODELS` | `auto` | Models to load: `auto`, `all`, or comma-separated list |
+| `API_KEY` | - | API authentication key (optional, unauthenticated if not set) |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG/INFO/WARNING/ERROR) |
-| `WORKERS` | `1` | Worker processes |
 | `MAX_AUDIO_SIZE` | `2048` | Max audio file size (MB, supports units like 2GB) |
-
-### Performance Optimization
-
-| Variable | Default | Description |
-|----------|---------|-------------|
 | `ASR_BATCH_SIZE` | `4` | ASR batch size (GPU: 4, CPU: 2) |
-| `INFERENCE_THREAD_POOL_SIZE` | `4` | Inference thread pool size (CPU: 1) |
 | `MAX_SEGMENT_SEC` | `90` | Max audio segment duration (seconds) |
-| `WS_MAX_BUFFER_SIZE` | `160000` | WebSocket audio buffer size (samples) |
 | `ENABLE_STREAMING_VLLM` | `false` | Load streaming VLLM instance (saves VRAM) |
-
-### Model Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QWEN_ASR_MODEL` | `auto` | Qwen3-ASR model selection: auto/1.7B/0.6B |
 | `MODELSCOPE_PATH` | `~/.cache/modelscope/hub/models` | ModelScope cache path |
 | `HF_HOME` | `~/.cache/huggingface` | HuggingFace cache path (GPU mode) |
 | `ASR_ENABLE_LM` | `true` | Enable language model (Paraformer) |
-| `LM_WEIGHT` | `0.15` | Language model weight (0.1-0.3) |
-| `LM_BEAM_SIZE` | `10` | Language model decoding beam size |
-
-### Near-Field Filtering
-
-| Variable | Default | Description |
-|----------|---------|-------------|
 | `ASR_ENABLE_NEARFIELD_FILTER` | `true` | Enable far-field sound filtering |
-| `ASR_NEARFIELD_RMS_THRESHOLD` | `0.01` | RMS energy threshold |
-| `ASR_NEARFIELD_FILTER_LOG_ENABLED` | `true` | Enable filtering logs |
 
 > Detailed configuration: [Near-Field Filter Docs](./docs/nearfield_filter.md)
 
