@@ -79,7 +79,7 @@ class Settings:
     ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
     # 音频分段配置
-    MAX_SEGMENT_SEC: float = 90.0  # 单个音频片段最大时长（秒），用于说话人分离和VAD切分
+    MAX_SEGMENT_SEC: float = 30.0  # VAD单个音频片段最大时长（秒）
 
     # Qwen3-ASR 模型配置
     # auto = 自动检测显存选择 (<32G用0.6b, >=32G用1.7b)

@@ -86,11 +86,7 @@ class SpeakerDiarizer:
         self,
         min_segment_sec: float = DEFAULT_MIN_SEGMENT_SEC,
     ):
-        # 从统一配置读取最大片段时长
-        max_segment_sec = settings.MAX_SEGMENT_SEC
-        self.max_segment_sec = max_segment_sec
         self.min_segment_sec = min_segment_sec
-        self.max_segment_ms = int(max_segment_sec * 1000)
         self.min_segment_ms = int(min_segment_sec * 1000)
 
     def diarize(
