@@ -126,7 +126,7 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 - **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b`
 - **无 CUDA**: 仅加载 `paraformer-large`（Qwen3 需要 vLLM/GPU）
 
-通过 `QWEN_ASR_MODEL` 环境变量可强制指定模型版本。
+通过 `ENABLED_MODELS` 环境变量可控制加载的模型版本。
 
 ### 模型下载
 
@@ -160,7 +160,7 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 |----------|--------|------|
 | `AUTO_LOAD_CUSTOM_ASR_MODELS` | - | 预加载的自定义模型（逗号分隔） |
 | `ASR_ENABLE_REALTIME_PUNC` | `true` | 是否启用实时标点模型 |
-| `QWEN_ASR_MODEL` | `auto` | Qwen3-ASR 模型选择: auto/1.7B/0.6B |
+| `ENABLED_MODELS` | `auto` | 启用的模型: `auto`/`all`/`qwen3-asr-1.7b,qwen3-asr-0.6b,paraformer-large` |
 | `ENABLE_STREAMING_VLLM` | `false` | 是否加载流式 VLLM 实例（节省显存） |
 
 **模式说明：**

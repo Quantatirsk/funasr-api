@@ -81,12 +81,6 @@ class Settings:
     # 音频分段配置
     MAX_SEGMENT_SEC: float = 30.0  # VAD单个音频片段最大时长（秒）
 
-    # Qwen3-ASR 模型配置
-    # auto = 自动检测显存选择 (<32G用0.6b, >=32G用1.7b)
-    # Qwen3-ASR-1.7B = 强制使用 1.7B
-    # Qwen3-ASR-0.6B = 强制使用 0.6B
-    QWEN_ASR_MODEL: str = "auto"
-
     # 流式 VLLM 实例控制（默认不启用，节省显存）
     # false = 只加载非流式实例（默认）
     # true = 同时加载流式和非流式实例
@@ -170,10 +164,6 @@ class Settings:
         self.MAX_SEGMENT_SEC = float(
             os.getenv("MAX_SEGMENT_SEC", str(self.MAX_SEGMENT_SEC))
         )
-
-        # Qwen3-ASR 模型配置
-        # auto = 自动检测显存选择, 或直接指定 Qwen3-ASR-1.7B / Qwen3-ASR-0.6B
-        self.QWEN_ASR_MODEL = os.getenv("QWEN_ASR_MODEL", self.QWEN_ASR_MODEL)
 
         # 流式 VLLM 实例控制
         self.ENABLE_STREAMING_VLLM = (

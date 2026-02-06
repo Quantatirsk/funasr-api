@@ -10,87 +10,34 @@ logger = logging.getLogger(__name__)
 
 
 def print_model_statistics(result: dict, use_logger: bool = True):
-    """
-    打印模型加载统计信息
-
-    Args:
-        result: preload_models() 返回的结果字典
-        use_logger: True使用logger输出（记录到日志），False使用print输出（显示到控制台）
-    """
+    """打印模型加载统计信息 - KISS版本：只显示已加载的模型"""
     output = logger.info if use_logger else print
 
-    output("=" * 60)
-    output("📊 模型加载统计：")
-    output("-" * 60)
-
     loaded_models = []
-    failed_models = []
-    skipped_models = []
-    model_index = 1  # 序号计数器
 
-    # 统计所有ASR模型
+    # 收集已加载的ASR模型
     for model_id, status in result["asr_models"].items():
         if status["loaded"]:
             loaded_models.append(f"ASR模型({model_id})")
-            output(f"   {model_index}. ✅ ASR模型({model_id}): 已加载")
-            model_index += 1
-        elif status["error"] is not None:
-            failed_models.append(f"ASR模型({model_id})")
-            if use_logger:
-                logger.error(f"   {model_index}. ❌ ASR模型({model_id}): {status['error']}")
-            else:
-                output(f"   {model_index}. ❌ ASR模型({model_id}): {status['error']}")
-            model_index += 1
 
-    # 统计其他模型（按优化后的顺序）
+    # 收集已加载的其他模型
     other_models = [
         ("vad_model", "语音活动检测模型(VAD)"),
-        ("punc_model", "标点符号模型(离线)"),
-        ("punc_realtime_model", "标点符号模型(实时)"),
         ("speaker_diarization_model", "说话人分离模型(CAM++)"),
     ]
-
     for key, name in other_models:
         if result[key]["loaded"]:
             loaded_models.append(name)
-            output(f"   {model_index}. ✅ {name}: 已加载")
-            model_index += 1
-        elif result[key]["error"] is not None:
-            failed_models.append(name)
-            if use_logger:
-                logger.error(f"   {model_index}. ❌ {name}: {result[key]['error']}")
-            else:
-                output(f"   {model_index}. ❌ {name}: {result[key]['error']}")
-            model_index += 1
-        else:
-            skipped_models.append(name)
-            output(f"   {model_index}. ⏭️  {name}: 已跳过")
-            model_index += 1
 
-    output("-" * 60)
-    loaded_count = len(loaded_models)
-    total_count = loaded_count + len(failed_models)
-
-    if loaded_count == total_count and total_count > 0:
-        output(
-            f"🎉 所有模型加载完成! (成功: {loaded_count}, 跳过: {len(skipped_models)})"
-        )
-    elif total_count > 0:
-        if use_logger:
-            logger.warning(
-                f"⚠️  部分模型加载失败 (成功: {loaded_count}/{total_count}, 失败: {len(failed_models)}, 跳过: {len(skipped_models)})"
-            )
-        else:
-            output(
-                f"⚠️  部分模型加载失败 (成功: {loaded_count}/{total_count}, 失败: {len(failed_models)}, 跳过: {len(skipped_models)})"
-            )
+    # 简洁输出
+    output("=" * 50)
+    if loaded_models:
+        output(f"✅ 已加载 {len(loaded_models)} 个模型:")
+        for i, name in enumerate(loaded_models, 1):
+            output(f"   {i}. {name}")
     else:
-        if use_logger:
-            logger.warning("⚠️  没有模型被加载")
-        else:
-            output("⚠️  没有模型被加载")
-
-    output("=" * 60)
+        output("⚠️  没有模型被加载")
+    output("=" * 50)
 
 
 def _has_cuda() -> bool:
@@ -297,9 +244,7 @@ def preload_models() -> dict:
         except Exception as e:
             result["punc_model"]["error"] = str(e)
             logger.error(f"❌ 标点符号模型(离线)加载失败: {e}")
-    else:
-        result["punc_model"]["error"] = "已跳过（Paraformer 未启用）"
-        logger.info("⏭️  跳过标点模型加载（Paraformer 未启用）")
+    # 标点模型是Paraformer的配套模型，未启用时不记录为错误
 
     # 4. 预加载实时标点符号模型 (如果启用)
     if paraformer_enabled and settings.ASR_ENABLE_REALTIME_PUNC:
@@ -317,10 +262,7 @@ def preload_models() -> dict:
         except Exception as e:
             result["punc_realtime_model"]["error"] = str(e)
             logger.error(f"❌ 实时标点符号模型加载失败: {e}")
-    else:
-        skip_reason = "Paraformer 未启用" if not paraformer_enabled else "实时标点被禁用"
-        result["punc_realtime_model"]["error"] = f"已跳过（{skip_reason}）"
-        logger.info(f"⏭️  跳过实时标点模型加载（{skip_reason}）")
+    # 实时标点模型是Paraformer的配套模型，未启用时不记录为错误
 
     # 5. 预加载说话人分离模型 (CAM++) - 必需模型，始终加载
     try:

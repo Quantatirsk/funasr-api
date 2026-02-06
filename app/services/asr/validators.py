@@ -41,16 +41,31 @@ def _detect_qwen_model_by_vram() -> str:
 def _get_active_qwen_model() -> str:
     """获取当前激活的 Qwen 模型
 
-    根据 QWEN_ASR_MODEL 环境变量或显存自动检测
+    根据 ENABLED_MODELS 环境变量配置返回应使用的 Qwen 模型
     """
-    model_config = settings.QWEN_ASR_MODEL
+    enabled_models = settings.ENABLED_MODELS.strip().lower()
 
-    if model_config == "Qwen3-ASR-1.7B":
-        return "qwen3-asr-1.7b"
-    elif model_config == "Qwen3-ASR-0.6B":
-        return "qwen3-asr-0.6b"
-    else:  # auto
+    # all: 优先使用 1.7b，否则 0.6b
+    if enabled_models == "all":
+        all_models = _load_supported_models()
+        if "qwen3-asr-1.7b" in all_models:
+            return "qwen3-asr-1.7b"
+        elif "qwen3-asr-0.6b" in all_models:
+            return "qwen3-asr-0.6b"
         return _detect_qwen_model_by_vram()
+
+    # auto: 根据显存自动选择
+    if enabled_models == "auto":
+        return _detect_qwen_model_by_vram()
+
+    # 解析逗号分隔列表，查找指定的 Qwen 模型
+    requested = [m.strip().lower() for m in settings.ENABLED_MODELS.split(",") if m.strip()]
+    for model in requested:
+        if model in ["qwen3-asr-1.7b", "qwen3-asr-0.6b"]:
+            return model
+
+    # 默认回退
+    return _detect_qwen_model_by_vram()
 
 
 def _load_supported_models() -> List[str]:
