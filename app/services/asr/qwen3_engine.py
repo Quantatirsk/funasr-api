@@ -307,23 +307,10 @@ class Qwen3ASREngine(BaseASREngine):
 
         output = [ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments]
         for idx, seg, result in zip(indices, segs, results):
-            # 从模型返回的时间戳提取实际起止时间，避免使用切分边界产生的累积误差
-            ts = getattr(result, "time_stamps", None)
-            items = getattr(ts, "items", None)
-            if items and len(items) > 0:
-                # 使用模型返回的实际识别时间戳（相对于片段），转换为全局时间戳
-                actual_start = round(seg.start_sec + items[0].start_time, 2)
-                actual_end = round(seg.start_sec + items[-1].end_time, 2)
-            else:
-                # 模型未返回时间戳，使用 0 便于发现问题
-                logger.warning(f"Qwen-ASR 片段 {idx} 未返回时间戳")
-                actual_start = 0.0
-                actual_end = 0.0
-
             output[idx] = ASRSegmentResult(
                 text=result.text or "",
-                start_time=actual_start,
-                end_time=actual_end,
+                start_time=round(seg.start_sec, 2),
+                end_time=round(seg.end_sec, 2),
                 speaker_id=getattr(seg, "speaker_id", None),
                 word_tokens=_get_word_tokens(result, word_timestamps),
             )
