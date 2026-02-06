@@ -135,22 +135,27 @@ def _resolve_models_to_load(all_available_models: list[str], config: str) -> lis
     Returns:
         应加载的模型ID列表
     """
-    cfg = config.strip().lower()
+    cfg = config.strip()
+    cfg_lower = cfg.lower()
     has_cuda = _has_cuda()
 
     # all: 加载所有（CPU 下过滤 Qwen）
-    if cfg == "all":
+    if cfg_lower == "all":
         if has_cuda:
+            logger.info("📝 ENABLED_MODELS=all，加载所有模型")
             return all_available_models
         # CPU: 只加载非 Qwen 模型
-        return [m for m in all_available_models if not m.startswith("qwen3-asr-")]
+        filtered = [m for m in all_available_models if not m.startswith("qwen3-asr-")]
+        logger.info(f"📝 ENABLED_MODELS=all，CPU环境过滤Qwen，加载: {filtered}")
+        return filtered
 
     # auto: 自动检测显存 + paraformer-large
-    if cfg == "auto":
+    if cfg_lower == "auto":
         qwen_model = _detect_qwen_model_by_vram()
         models = []
         if qwen_model and qwen_model in all_available_models:
             models.append(qwen_model)
+            logger.info(f"📝 ENABLED_MODELS=auto，根据显存选择: {qwen_model}")
         if "paraformer-large" in all_available_models:
             models.append("paraformer-large")
         return models
@@ -161,6 +166,7 @@ def _resolve_models_to_load(all_available_models: list[str], config: str) -> lis
     if not has_cuda:
         # CPU 环境过滤 Qwen
         result = [m for m in result if not m.startswith("qwen3-asr-")]
+    logger.info(f"📝 ENABLED_MODELS={config}，加载指定模型: {result}")
     return result
 
 

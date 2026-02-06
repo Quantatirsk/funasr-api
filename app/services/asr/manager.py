@@ -187,7 +187,6 @@ class ModelManager:
             import torch
 
             if not torch.cuda.is_available():
-                logger.info("无 CUDA，禁用 Qwen3-ASR（vLLM 不支持 CPU），使用 paraformer-large")
                 return "paraformer-large" if "paraformer-large" in self._models_config else None
 
             # 获取所有 GPU 的显存，使用最小的那个
@@ -201,11 +200,9 @@ class ModelManager:
 
             if total_vram >= 32:
                 if "qwen3-asr-1.7b" in self._models_config:
-                    logger.info(f"显存充足 ({total_vram:.1f}GB >= 32GB)，使用 Qwen3-ASR-1.7B")
                     return "qwen3-asr-1.7b"
             else:
                 if "qwen3-asr-0.6b" in self._models_config:
-                    logger.info(f"显存有限 ({total_vram:.1f}GB < 32GB)，使用 Qwen3-ASR-0.6B")
                     return "qwen3-asr-0.6b"
 
         except Exception as e:
