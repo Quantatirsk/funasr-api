@@ -4,6 +4,7 @@ ASR引擎基础模块
 包含抽象基类和数据类定义
 """
 
+import os
 import time
 import torch
 import logging
@@ -243,6 +244,25 @@ class BaseASREngine(ABC):
             total_duration_ms = (time.time() - start_time) * 1000
 
             # 记录结构化日志
+            # Apply timestamp scaling if sidecar file exists
+            tsscale_path = audio_path + ".tsscale"
+            if os.path.exists(tsscale_path):
+                try:
+                    with open(tsscale_path, "r") as f:
+                        ts_scale = float(f.read().strip())
+                    if ts_scale != 1.0:
+                        for seg in results:
+                            seg.start_time *= ts_scale
+                            seg.end_time *= ts_scale
+                            if seg.word_tokens:
+                                for wt in seg.word_tokens:
+                                    wt.start_time *= ts_scale
+                                    wt.end_time *= ts_scale
+                        duration *= ts_scale
+                        logger.info(f"Timestamp scaling applied: scale={ts_scale:.6f}")
+                except Exception as e:
+                    logger.warning(f"Failed to apply timestamp scaling: {e}")
+
             log_inference_metrics(
                 logger=logger,
                 message="长音频识别完成",

@@ -126,6 +126,10 @@ def cleanup_temp_file(file_path: str) -> None:
     try:
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
+            # Clean up sidecar timestamp scale file if exists
+            tsscale_path = file_path + ".tsscale"
+            if os.path.exists(tsscale_path):
+                os.remove(tsscale_path)
     except Exception:
         # 静默忽略清理错误
         pass
@@ -171,6 +175,54 @@ def get_audio_duration(audio_path: str) -> float:
         return duration
     except Exception as e:
         raise DefaultServerErrorException(f"获取音频时长失败: {str(e)}")
+
+
+def get_container_duration(audio_path: str) -> Optional[float]:
+    """通过 ffprobe 获取音频容器的 metadata 时长
+
+    对于 m4a/AAC 等压缩格式，容器记录的时长可能与实际解码样本数不一致
+    （常见于 m3u8/ts 分片合并的音频）。返回 None 表示获取失败。
+    """
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except Exception as e:
+        logger.debug(f"ffprobe 获取容器时长失败: {e}")
+    return None
+
+
+def get_timestamp_scale(original_audio_path: str, decoded_duration: float) -> float:
+    """计算时间戳缩放系数
+
+    对比容器 metadata 时长与解码后实际时长，返回缩放系数。
+    用于修正 m4a/AAC 等格式中容器时长与解码时长不一致的问题。
+
+    Args:
+        original_audio_path: 原始音频文件路径（转换前）
+        decoded_duration: 解码后的实际音频时长（秒）
+
+    Returns:
+        缩放系数（容器时长 / 解码时长），无差异时返回 1.0
+    """
+    container_duration = get_container_duration(original_audio_path)
+    if container_duration is None or decoded_duration <= 0:
+        return 1.0
+
+    scale = container_duration / decoded_duration
+    if abs(scale - 1.0) < 0.001:
+        # 差异 < 0.1%，忽略
+        return 1.0
+
+    logger.info(
+        f"检测到容器/解码时长不一致: container={container_duration:.3f}s, "
+        f"decoded={decoded_duration:.3f}s, scale={scale:.6f}"
+    )
+    return scale
 
 
 def resample_audio_array(
@@ -370,15 +422,16 @@ def convert_audio_to_wav(
 def normalize_audio_for_asr(audio_path: str, target_sr: int = 16000) -> str:
     """将音频文件标准化为ASR模型所需的格式
 
+    转换后会自动检测容器/解码时长不一致（常见于 m3u8/ts 合并的 m4a/AAC），
+    若检测到差异，将缩放系数写入 sidecar 文件 ``{normalized_path}.tsscale``，
+    下游 ``transcribe_long_audio`` 会自动读取并修正时间戳。
+
     Args:
         audio_path: 输入音频文件路径
         target_sr: 目标采样率，默认16000Hz
 
     Returns:
         标准化后的WAV文件路径
-
-    Raises:
-        AudioProcessingException: 标准化失败
     """
     try:
         # 检查文件扩展名
@@ -394,6 +447,16 @@ def normalize_audio_for_asr(audio_path: str, target_sr: int = 16000) -> str:
         # 转换为标准WAV格式
         normalized_path = convert_audio_to_wav(audio_path, target_sr=target_sr)
         logger.debug(f"音频文件已标准化: {audio_path} -> {normalized_path}")
+
+        # Detect container/decoded duration mismatch and write sidecar
+        if normalized_path != audio_path:
+            decoded_duration = get_audio_duration(normalized_path)
+            ts_scale = get_timestamp_scale(audio_path, decoded_duration)
+            if ts_scale != 1.0:
+                tsscale_path = normalized_path + ".tsscale"
+                with open(tsscale_path, "w") as f:
+                    f.write(str(ts_scale))
+
         return normalized_path
 
     except Exception as e:
