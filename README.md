@@ -9,8 +9,8 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 ---
 
 ![Static Badge](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![Static Badge](https://img.shields.io/badge/Torch-2.3.1-%23EE4C2C?logo=pytorch&logoColor=white)
-![Static Badge](https://img.shields.io/badge/CUDA-12.1+-%2376B900?logo=nvidia&logoColor=white)
+![Static Badge](https://img.shields.io/badge/Torch-2.9.0-%23EE4C2C?logo=pytorch&logoColor=white)
+![Static Badge](https://img.shields.io/badge/CUDA-12.6+-%2376B900?logo=nvidia&logoColor=white)
 
 </div>
 
@@ -72,7 +72,21 @@ docker run -d --name funasr-api \
 
 > **Note**: CPU environment automatically filters Qwen3 models (vLLM requires GPU)
 
-**Offline Deployment**: Pack and copy the `models/` directory to the offline machine. See [MODEL_SETUP.md](./docs/MODEL_SETUP.md) for details.
+**Offline Deployment**: Use the helper script to prepare models, then copy to the offline machine:
+
+```bash
+# 1. Prepare models (interactive selection)
+./scripts/prepare-models.sh
+
+# 2. Copy the package to offline server
+scp funasr-models-*.tar.gz user@server:/opt/funasr-api/
+
+# 3. On offline server, extract and start
+tar -xzvf funasr-models-*.tar.gz
+docker-compose up -d
+```
+
+See [MODEL_SETUP.md](./docs/MODEL_SETUP.md) for more details.
 
 > Detailed deployment instructions: [Deployment Guide](./docs/deployment.md)
 
@@ -81,7 +95,7 @@ docker run -d --name funasr-api \
 **System Requirements:**
 
 - Python 3.10+
-- CUDA 12.1+ (optional, for GPU acceleration)
+- CUDA 12.6+ (optional, for GPU acceleration)
 - FFmpeg (audio format conversion)
 
 **Installation:**
@@ -173,7 +187,7 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 | `audio_address` | string | - | Audio URL (optional) |
 | `sample_rate` | int | `16000` | Sample rate |
 | `enable_speaker_diarization` | bool | `true` | Enable speaker diarization |
-| `word_timestamps` | bool | `false` | Return word-level timestamps (Qwen3-ASR only) |
+| `word_timestamps` | bool | `true` | Return word-level timestamps (Qwen3-ASR only) |
 | `vocabulary_id` | string | - | Hotwords (format: `word1 weight1 word2 weight2`) |
 
 **Usage Examples:**

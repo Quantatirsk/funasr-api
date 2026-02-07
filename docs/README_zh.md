@@ -7,8 +7,8 @@
 ---
 
 ![Static Badge](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![Static Badge](https://img.shields.io/badge/Torch-2.3.1-%23EE4C2C?logo=pytorch&logoColor=white)
-![Static Badge](https://img.shields.io/badge/CUDA-12.1+-%2376B900?logo=nvidia&logoColor=white)
+![Static Badge](https://img.shields.io/badge/Torch-2.9.0-%23EE4C2C?logo=pytorch&logoColor=white)
+![Static Badge](https://img.shields.io/badge/CUDA-12.6+-%2376B900?logo=nvidia&logoColor=white)
 
 </div>
 
@@ -70,7 +70,21 @@ docker run -d --name funasr-api \
 
 > **注意**: CPU 环境自动过滤 Qwen3 模型（vLLM 需要 GPU）
 
-**内网部署**：将 `models/` 目录打包复制到内网机器即可，详见 [MODEL_SETUP.md](./MODEL_SETUP.md)
+**内网部署**：使用辅助脚本准备模型，然后复制到内网机器：
+
+```bash
+# 1. 准备模型（交互式选择）
+./scripts/prepare-models.sh
+
+# 2. 复制到内网服务器
+scp funasr-models-*.tar.gz user@server:/opt/funasr-api/
+
+# 3. 在内网服务器解压并启动
+tar -xzvf funasr-models-*.tar.gz
+docker-compose up -d
+```
+
+详见 [MODEL_SETUP.md](./MODEL_SETUP.md)
 
 > 详细部署说明请查看 [部署指南](./deployment.md)
 
@@ -79,7 +93,7 @@ docker run -d --name funasr-api \
 **系统要求:**
 
 - Python 3.10+
-- CUDA 12.1+ (可选，用于 GPU 加速)
+- CUDA 12.6+ (可选，用于 GPU 加速)
 - FFmpeg (音频格式转换)
 
 **安装步骤:**
@@ -171,7 +185,7 @@ curl -X POST "http://localhost:8000/v1/audio/transcriptions" \
 | `audio_address`              | string | -                  | 音频 URL（可选）                      |
 | `sample_rate`                | int    | `16000`          | 采样率                                |
 | `enable_speaker_diarization` | bool   | `true`           | 启用说话人分离                        |
-| `word_timestamps`            | bool   | `false`          | 返回字词级时间戳（仅Qwen3-ASR支持）  |
+| `word_timestamps`            | bool   | `true`           | 返回字词级时间戳（仅Qwen3-ASR支持）  |
 | `vocabulary_id`              | string | -                  | 热词（格式：`词1 权重1 词2 权重2`） |
 
 **使用示例:**

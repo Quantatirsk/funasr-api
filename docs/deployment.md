@@ -9,7 +9,7 @@
 适用于生产环境，提供更快的推理速度：
 
 **前置要求：**
-- NVIDIA GPU (CUDA 12.1+)
+- NVIDIA GPU (CUDA 12.6+)
 - 已安装 NVIDIA Container Toolkit
 - 显存 6GB+（推荐 16GB+ 以支持 Qwen3-ASR 1.7B）
 
