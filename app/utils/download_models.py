@@ -198,22 +198,37 @@ def fix_camplusplus_config() -> bool:
         return False
 
 
-def download_models(auto_mode: bool = False) -> bool:
+def download_models(auto_mode: bool = False, export_dir: Optional[str] = None) -> bool:
     """下载所有需要的模型
 
     Args:
         auto_mode: 如果为True，表示自动模式（从start.py调用），会简化输出
+        export_dir: 如果指定，将下载的模型导出到该目录（用于离线部署）
 
     Returns:
         是否全部下载成功
     """
+    import shutil
+
     # 检查缺失的模型
     missing = check_all_models()
 
+    # 导出模式下，需要包含已存在的模型
+    export_path = Path(export_dir) if export_dir else None
+    models_to_export = set()
+
     if not missing:
+        if export_path:
+            # 导出模式下，收集所有模型路径
+            for item in MODELSCOPE_MODELS:
+                model_id, desc, _ = item
+                models_to_export.add((model_id, "modelscope"))
+            for model_id, desc in HF_MODELS:
+                models_to_export.add((model_id, "huggingface"))
         if not auto_mode:
             print("✅ 所有模型已存在，无需下载")
-        return True
+        if not export_path:
+            return True
 
     ms_cache_dir = Path.home() / ".cache" / "modelscope"
     hf_cache_dir = Path.home() / ".cache" / "huggingface"
@@ -255,7 +270,7 @@ def download_models(auto_mode: bool = False) -> bool:
                     path = ms_snapshot_download(model_id)
                 if not auto_mode:
                     print(f" ✅ 完成: {path}")
-                downloaded.append(model_id)
+                downloaded.append((model_id, "modelscope", path))
             except Exception as e:
                 if not auto_mode:
                     print(f" ❌ 失败: {e}")
@@ -278,7 +293,7 @@ def download_models(auto_mode: bool = False) -> bool:
                 path = hf_snapshot_download(model_id)
                 if not auto_mode:
                     print(f" ✅ 完成: {path}")
-                downloaded.append(model_id)
+                downloaded.append((model_id, "huggingface", path))
             except Exception as e:
                 if not auto_mode:
                     print(f" ❌ 失败: {e}")
@@ -293,6 +308,50 @@ def download_models(auto_mode: bool = False) -> bool:
     else:
         if not auto_mode:
             print("  ℹ️  无需修复或配置文件不存在")
+
+    # 导出模式：复制模型到项目 models/ 目录（与 docker-compose 挂载路径一致）
+    if export_path and not failed:
+        if not auto_mode:
+            print(f"\n📦 导出模型到: {export_path}")
+
+        # models/modelscope/ 和 models/huggingface/ 结构
+        ms_target = export_path / "modelscope"
+        hf_target = export_path / "huggingface"
+
+        # 收集所有需要导出的模型
+        all_models = []
+        for item in MODELSCOPE_MODELS:
+            model_id, desc, _ = item
+            all_models.append((model_id, "modelscope"))
+        for model_id, desc in HF_MODELS:
+            all_models.append((model_id, "huggingface"))
+
+        exported = 0
+        for model_id, source in all_models:
+            cache_path = _get_cache_path(model_id, source)
+            if cache_path.exists():
+                # 计算相对路径，保持原结构
+                if source == "modelscope":
+                    rel_path = cache_path.relative_to(Path.home() / ".cache" / "modelscope")
+                    target_dir = ms_target / rel_path
+                else:
+                    rel_path = cache_path.relative_to(Path.home() / ".cache" / "huggingface" / "hub")
+                    target_dir = hf_target / "hub" / rel_path
+
+                target_dir.parent.mkdir(parents=True, exist_ok=True)
+                if not auto_mode:
+                    print(f"  📂 {model_id}", end="")
+                try:
+                    shutil.copytree(cache_path, target_dir, dirs_exist_ok=True)
+                    exported += 1
+                    if not auto_mode:
+                        print(" ✅")
+                except Exception as e:
+                    if not auto_mode:
+                        print(f" ❌ {e}")
+
+        if not auto_mode:
+            print(f"\n✅ 已导出 {exported} 个模型到 models/")
 
     if not auto_mode:
         print("\n" + "=" * 60)

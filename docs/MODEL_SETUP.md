@@ -17,95 +17,97 @@ FunASR-API 使用以下模型仓库：
 
 ## 手动预下载
 
-如需预下载模型（例如内网部署场景），可以使用以下方式：
+如需预下载模型（例如内网部署场景），推荐使用辅助脚本：
 
-### 1. 使用 ModelScope 下载 FunASR 模型
+### 方式一：使用辅助脚本（推荐）
+
+```bash
+# 运行交互式模型准备脚本
+./scripts/prepare-models.sh
+```
+
+脚本会显示交互式菜单，让你选择需要下载的模型组合：
+- 仅 Paraformer（CPU/GPU 通用，最小体积）
+- Paraformer + Qwen3-ASR-0.6B（推荐，平衡性能与体积）
+- Paraformer + Qwen3-ASR-1.7B（最佳性能）
+- 仅 Qwen3-ASR-0.6B
+- 仅 Qwen3-ASR-1.7B
+
+下载完成后，脚本会自动打包为 `funasr-models-<timestamp>.tar.gz`，可直接复制到内网服务器使用。
+
+### 方式二：使用 Python 手动下载
+
+如需更精细控制，可以直接使用 Python 下载：
+
+**ModelScope 模型（FunASR）：**
 
 ```python
-# 使用 ModelScope 下载模型
 from modelscope import snapshot_download
 
-# 下载 Paraformer-large 模型
 snapshot_download("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
-
-# 下载 VAD 模型
 snapshot_download("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch")
-
-# 下载标点模型
 snapshot_download("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch")
-
-# 下载实时标点模型
 snapshot_download("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727")
-
-# 下载 CAM++ 说话人分离模型
 snapshot_download("iic/speech_campplus_speaker-diarization_common")
-
-# 下载 N-gram 语言模型
 snapshot_download("iic/speech_ngram_lm_zh-cn-ai-wesp-fst")
 ```
 
-### 2. 使用 HuggingFace 下载 Qwen3-ASR 模型
+**HuggingFace 模型（Qwen3-ASR）：**
 
 ```python
-# 使用 HuggingFace 下载 Qwen3-ASR 模型
 from huggingface_hub import snapshot_download
 
-# 下载 Qwen3-ASR 1.7B 模型
 snapshot_download("Qwen/Qwen3-ASR-1.7B")
-
-# 下载 Qwen3-ASR 0.6B 模型
 snapshot_download("Qwen/Qwen3-ASR-0.6B")
 ```
 
 ## 内网部署
 
-### 步骤 1: 在外网机器下载模型
+### 步骤 1: 在外网机器准备模型
 
 ```bash
-# 创建模型目录
-mkdir -p models/modelscope models/huggingface
+# 运行辅助脚本，交互式选择需要的模型
+./scripts/prepare-models.sh
 
-# 使用 Docker 下载模型
-docker run --rm \
-  -v $(pwd)/models/modelscope:/root/.cache/modelscope \
-  -v $(pwd)/models/huggingface:/root/.cache/huggingface \
-  quantatrisk/funasr-api:gpu-latest
-
-# 服务启动后会自动下载模型，等待下载完成后停止容器
+# 脚本会生成类似 funasr-models-20250206-143022.tar.gz 的文件
 ```
 
-### 步骤 2: 打包模型
+### 步骤 2: 传输到内网服务器
 
 ```bash
-# 打包模型目录
-tar -czvf funasr-models.tar.gz models/
-
-# 传输到内网机器
-scp funasr-models.tar.gz user@internal-server:/path/to/deploy/
+# 将打包的模型传输到内网服务器
+scp funasr-models-*.tar.gz user@internal-server:/opt/funasr-api/
 ```
 
 ### 步骤 3: 内网机器部署
 
 ```bash
-# 在内网机器解压模型
-cd /path/to/deploy/
-tar -xzvf funasr-models.tar.gz
+# 进入部署目录
+cd /opt/funasr-api/
 
-# 启动服务（使用本地模型）
-docker run -d --name funasr-api \
-  --gpus all \
-  -p 17003:8000 \
-  -v ./models/modelscope:/root/.cache/modelscope \
-  -v ./models/huggingface:/root/.cache/huggingface \
-  -v ./logs:/app/logs \
-  -v ./temp:/app/temp \
-  -e DEVICE=auto \
-  -e MODELSCOPE_PATH=/root/.cache/modelscope/hub/models \
-  -e HF_HOME=/root/.cache/huggingface \
-  quantatrisk/funasr-api:gpu-latest
+# 解压模型（会自动解压到 models/ 目录）
+tar -xzvf funasr-models-*.tar.gz
+
+# 启动服务（docker-compose.yml 已配置好模型挂载）
+docker-compose up -d
 ```
 
+解压后的目录结构：
+
+```
+/opt/funasr-api/
+├── docker-compose.yml
+├── models/
+│   ├── modelscope/     # FunASR 模型（Paraformer、VAD、CAM++ 等）
+│   └── huggingface/    # Qwen3-ASR 模型
+└── funasr-models-*.tar.gz
+```
+
+此结构与 `docker-compose.yml` 中的挂载配置一致，无需额外配置即可直接使用。
+
 ## Docker Compose 内网部署
+
+使用 `prepare-models.sh` 准备的模型目录与 `docker-compose.yml` 完全兼容：
 
 ```yaml
 services:
@@ -115,18 +117,15 @@ services:
     ports:
       - "17003:8000"
     volumes:
-      # 挂载预下载的模型
+      # 挂载预下载的模型（与 prepare-models.sh 输出结构一致）
       - ./models/modelscope:/root/.cache/modelscope
       - ./models/huggingface:/root/.cache/huggingface
       - ./temp:/app/temp
       - ./logs:/app/logs
     environment:
-      - DEBUG=false
       - LOG_LEVEL=INFO
       - DEVICE=auto
-      # 显式设置模型缓存路径
-      - MODELSCOPE_PATH=/root/.cache/modelscope/hub/models
-      - HF_HOME=/root/.cache/huggingface
+      - ENABLED_MODELS=auto
     restart: unless-stopped
     deploy:
       resources:
@@ -136,6 +135,8 @@ services:
               count: all
               capabilities: [gpu]
 ```
+
+只需确保 `models/` 目录与 `docker-compose.yml` 在同一目录下即可。
 
 ## 模型路径映射说明
 
