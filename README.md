@@ -14,6 +14,10 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 
 </div>
 
+## Live Demo Site
+
+- **Web Demo**: https://asr.vect.one
+
 ## Demo
 
 [![Demo](./demo/demo.png)](https://media.cdn.vect.one/qwenasr_client_demo.mp4)

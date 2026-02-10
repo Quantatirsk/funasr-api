@@ -12,6 +12,10 @@
 
 </div>
 
+## 在线演示站点
+
+- **在线体验**: https://asr.vect.one
+
 ## 演示
 
 [![演示](../demo/demo.png)](https://media.cdn.vect.one/qwenasr_client_demo.mp4)

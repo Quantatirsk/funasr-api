@@ -1,6 +1,6 @@
 services:
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:latest
     container_name: funasr-nginx
     ports:
       - "${NGINX_PORT:-17003}:80"
