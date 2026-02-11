@@ -59,29 +59,24 @@ class AudioSplitter:
     # 默认配置
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
-    DEFAULT_MAX_SILENCE_SEC = 2.0  # 合并时最大允许的静音间隙（秒）
 
     def __init__(
         self,
         min_segment_sec: float = DEFAULT_MIN_SEGMENT_SEC,
         device: str = "auto",
-        max_silence_sec: float = DEFAULT_MAX_SILENCE_SEC,
     ):
         """初始化音频分割器
 
         Args:
             min_segment_sec: 每段最小时长（秒）
             device: 计算设备（"cuda", "cpu", "auto"）
-            max_silence_sec: 合并时最大允许的静音间隙（秒），超过此值会强制切分
         """
         split_trigger_sec = settings.MAX_SEGMENT_SEC
 
         self.split_trigger_sec = split_trigger_sec
         self.min_segment_sec = min_segment_sec
-        self.max_silence_sec = max_silence_sec
         self.split_trigger_ms = int(split_trigger_sec * 1000)
         self.min_segment_ms = int(min_segment_sec * 1000)
-        self.max_silence_ms = int(max_silence_sec * 1000)
         self.device = device
 
     def get_vad_segments(
@@ -120,8 +115,8 @@ class AudioSplitter:
 
             logger.info(f"VAD 检测到 {len(vad_segments)} 个语音段")
             logger.info(
-                "开始按静音间隙重分段 "
-                f"(split_trigger={self.split_trigger_sec}s, max_silence={self.max_silence_sec}s)..."
+                "开始按 VAD 边界重分段 "
+                f"(split_trigger={self.split_trigger_sec}s, min_segment={self.min_segment_sec}s)..."
             )
             return [(int(seg[0]), int(seg[1])) for seg in vad_segments]
 
@@ -136,7 +131,7 @@ class AudioSplitter:
 
         策略：
         1. 默认保留 VAD 原始边界，避免将整段连续语音合并成超长片段
-        2. 仅在短片段（< min_segment_ms）且静音间隙较小（<= max_silence_ms）时与相邻段合并
+        2. 仅对短片段（< min_segment_ms）做邻段合并
         3. 对重叠片段进行边界修正，避免重复音频
 
         Args:
@@ -174,22 +169,46 @@ class AudioSplitter:
         if not normalized:
             return self._split_by_fixed_duration(total_duration_ms)
 
-        merged: List[Tuple[int, int]] = [normalized[0]]
-        for start_ms, end_ms in normalized[1:]:
-            prev_start, prev_end = merged[-1]
-            silence_gap = start_ms - prev_end
-            prev_duration = prev_end - prev_start
-            cur_duration = end_ms - start_ms
+        merged = list(normalized)
 
-            should_merge_short_segment = (
-                0 <= silence_gap <= self.max_silence_ms
-                and (prev_duration < self.min_segment_ms or cur_duration < self.min_segment_ms)
-            )
+        # 只处理短片段：与相邻片段合并（不基于静音间隙）
+        idx = 0
+        while idx < len(merged):
+            start_ms, end_ms = merged[idx]
+            duration = end_ms - start_ms
 
-            if should_merge_short_segment:
-                merged[-1] = (prev_start, end_ms)
+            if duration >= self.min_segment_ms or len(merged) == 1:
+                idx += 1
+                continue
+
+            if idx == 0:
+                # 首段过短：并入后段
+                next_start, next_end = merged[idx + 1]
+                merged[idx + 1] = (start_ms, next_end)
+                del merged[idx]
+                continue
+
+            if idx == len(merged) - 1:
+                # 尾段过短：并入前段
+                prev_start, _ = merged[idx - 1]
+                merged[idx - 1] = (prev_start, end_ms)
+                del merged[idx]
+                idx = max(0, idx - 1)
+                continue
+
+            # 中间短段：优先并入时长更短的一侧，避免单段过长
+            prev_start, prev_end = merged[idx - 1]
+            next_start, next_end = merged[idx + 1]
+            merged_with_prev_duration = end_ms - prev_start
+            merged_with_next_duration = next_end - start_ms
+
+            if merged_with_prev_duration <= merged_with_next_duration:
+                merged[idx - 1] = (prev_start, end_ms)
+                del merged[idx]
+                idx = max(0, idx - 1)
             else:
-                merged.append((start_ms, end_ms))
+                merged[idx + 1] = (start_ms, next_end)
+                del merged[idx]
 
         return merged
 
