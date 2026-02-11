@@ -59,7 +59,7 @@ class AudioSplitter:
     # 默认配置
     DEFAULT_MIN_SEGMENT_SEC = 1.0  # 每段最小时长（秒）
     DEFAULT_SAMPLE_RATE = 16000  # 默认采样率
-    DEFAULT_MAX_SILENCE_SEC = 3.0  # 合并时最大允许的静音间隙（秒）
+    DEFAULT_MAX_SILENCE_SEC = 2.0  # 合并时最大允许的静音间隙（秒）
 
     def __init__(
         self,
