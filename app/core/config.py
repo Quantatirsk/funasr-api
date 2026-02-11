@@ -79,7 +79,7 @@ class Settings:
     ASR_BATCH_SIZE: int = 4  # ASR 批处理大小（同时推理的片段数），建议 2-8
 
     # 音频分段配置
-    MAX_SEGMENT_SEC: float = 30.0  # VAD单个音频片段最大时长（秒）
+    MAX_SEGMENT_SEC: float = 30.0  # 长音频触发 VAD 分割阈值（秒）
 
     # 流式 VLLM 实例控制（默认不启用，节省显存）
     # false = 只加载非流式实例（默认）
