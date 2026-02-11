@@ -183,80 +183,55 @@ class BaseASREngine(ABC):
 
             # 使用批处理推理
             batch_size = settings.ASR_BATCH_SIZE
-            max_batch_retries = 1
             logger.info(f"使用批处理推理，batch_size={batch_size}, word_timestamps={word_timestamps}")
 
-            try:
-                for batch_start in range(0, len(segments_to_process), batch_size):
-                    batch_end = min(batch_start + batch_size, len(segments_to_process))
-                    batch_segments = segments_to_process[batch_start:batch_end]
+            for batch_start in range(0, len(segments_to_process), batch_size):
+                batch_end = min(batch_start + batch_size, len(segments_to_process))
+                batch_segments = segments_to_process[batch_start:batch_end]
 
-                    logger.info(
-                        f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
-                        f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
+                logger.info(
+                    f"推理批次 {batch_start//batch_size + 1}/{(len(segments_to_process) + batch_size - 1)//batch_size}: "
+                    f"片段 {batch_start+1}-{batch_end}/{len(segments_to_process)}"
+                )
+
+                try:
+                    # 批量推理，支持时间戳
+                    batch_results = self._transcribe_batch(
+                        segments=batch_segments,
+                        hotwords=hotwords,
+                        enable_punctuation=enable_punctuation,
+                        enable_itn=enable_itn,
+                        sample_rate=sample_rate,
+                        word_timestamps=word_timestamps,
                     )
 
-                    for attempt in range(max_batch_retries + 1):
-                        try:
-                            # 批量推理，支持时间戳
-                            batch_results = self._transcribe_batch(
-                                segments=batch_segments,
-                                hotwords=hotwords,
-                                enable_punctuation=enable_punctuation,
-                                enable_itn=enable_itn,
-                                sample_rate=sample_rate,
-                                word_timestamps=word_timestamps,
-                            )
-
-                            if len(batch_results) != len(batch_segments):
-                                raise DefaultServerErrorException(
-                                    "批次结果数量不匹配: "
-                                    f"expected={len(batch_segments)}, got={len(batch_results)}"
+                    for seg, result in zip(batch_segments, batch_results):
+                        if result and result.text:
+                            results.append(
+                                ASRSegmentResult(
+                                    text=result.text,
+                                    start_time=seg.start_sec,
+                                    end_time=seg.end_sec,
+                                    speaker_id=getattr(seg, 'speaker_id', None),
+                                    word_tokens=result.word_tokens if word_timestamps else None,
                                 )
-
-                            for seg, result in zip(batch_segments, batch_results):
-                                if result and result.text:
-                                    results.append(
-                                        ASRSegmentResult(
-                                            text=result.text,
-                                            start_time=seg.start_sec,
-                                            end_time=seg.end_sec,
-                                            speaker_id=getattr(seg, 'speaker_id', None),
-                                            word_tokens=result.word_tokens if word_timestamps else None,
-                                        )
-                                    )
-                                    all_texts.append(result.text)
-
-                            logger.info(
-                                f"批次推理完成，有效片段: {len([r for r in batch_results if r and r.text])}"
                             )
-                            break
+                            all_texts.append(result.text)
 
-                        except Exception as e:
-                            if attempt < max_batch_retries:
-                                logger.warning(
-                                    "批次推理失败，准备重试: "
-                                    f"batch={batch_start//batch_size + 1}, attempt={attempt + 1}/{max_batch_retries}, error={e}"
-                                )
-                                continue
+                    logger.info(f"批次推理完成，有效片段: {len([r for r in batch_results if r and r.text])}")
 
-                            logger.error(
-                                "批次推理失败，终止任务: "
-                                f"batch={batch_start//batch_size + 1}, segment_range={batch_start + 1}-{batch_end}, error={e}"
-                            )
-                            raise DefaultServerErrorException(
-                                "批次推理失败，已终止以避免返回不完整结果"
-                            ) from e
-            finally:
-                # 清理临时文件（独立清理，避免条件遗漏）
-                try:
-                    if speaker_segments:
-                        from app.utils.speaker_diarizer import SpeakerDiarizer
-                        SpeakerDiarizer.cleanup_segments(speaker_segments)
-                    if audio_segments:
-                        AudioSplitter.cleanup_segments(audio_segments)
                 except Exception as e:
-                    logger.warning(f"清理临时文件时出错: {e}")
+                    logger.error(f"批次推理失败: {e}, 跳过该批次")
+
+            # 清理临时文件（独立清理，避免条件遗漏）
+            try:
+                if speaker_segments:
+                    from app.utils.speaker_diarizer import SpeakerDiarizer
+                    SpeakerDiarizer.cleanup_segments(speaker_segments)
+                if audio_segments:
+                    AudioSplitter.cleanup_segments(audio_segments)
+            except Exception as e:
+                logger.warning(f"清理临时文件时出错: {e}")
 
             full_text = "\n".join(all_texts)
 
