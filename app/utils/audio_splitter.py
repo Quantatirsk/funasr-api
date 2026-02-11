@@ -132,16 +132,12 @@ class AudioSplitter:
     def merge_segments_greedy(
         self, vad_segments: List[Tuple[int, int]], total_duration_ms: int
     ) -> List[Tuple[int, int]]:
-        """按静音间隙重分段 VAD 结果
+        """按 VAD 结果重分段
 
-        算法思路：
-        1. 先按时间排序
-        2. 连续累积语音段
-        3. 仅当相邻语音段间静音间隙超过 max_silence_ms 时切分
-
-        说明：
-        - 不再基于 MAX_SEGMENT_SEC 对 VAD 后片段做二次强制切分
-        - MAX_SEGMENT_SEC 仅用于决定是否进入 VAD 分割流程
+        策略：
+        1. 默认保留 VAD 原始边界，避免将整段连续语音合并成超长片段
+        2. 仅在短片段（< min_segment_ms）且静音间隙较小（<= max_silence_ms）时与相邻段合并
+        3. 对重叠片段进行边界修正，避免重复音频
 
         Args:
             vad_segments: VAD 检测到的语音段列表 [(start_ms, end_ms), ...]
@@ -154,29 +150,46 @@ class AudioSplitter:
             # 没有 VAD 段，返回整个音频（按最大时长切分）
             return self._split_by_fixed_duration(total_duration_ms)
 
-        merged: List[Tuple[int, int]] = []
-        # 按时间排序，从第一个 VAD 段开始
+        # 按时间排序并修正边界（防止越界、重叠）
         sorted_vad = sorted(vad_segments, key=lambda x: x[0])
-        current_start = sorted_vad[0][0]
-        prev_end = sorted_vad[0][1]
+        normalized: List[Tuple[int, int]] = []
+        for raw_start, raw_end in sorted_vad:
+            start_ms = max(0, int(raw_start))
+            end_ms = min(total_duration_ms, int(raw_end))
+            if end_ms <= start_ms:
+                continue
 
-        for seg_start, seg_end in sorted_vad[1:]:
-            silence_gap = seg_start - prev_end
+            if not normalized:
+                normalized.append((start_ms, end_ms))
+                continue
 
-            # 静音间隙太长，在前一段结束处切分
-            if silence_gap > self.max_silence_ms and (prev_end - current_start) >= self.min_segment_ms:
-                logger.debug(
-                    f"静音间隙 {silence_gap / 1000:.1f}s 超过阈值 {self.max_silence_sec}s，切分"
-                )
-                merged.append((current_start, prev_end))
-                current_start = seg_start
+            last_start, last_end = normalized[-1]
+            # 有重叠时，优先保持边界，避免与上一段重复采样
+            if start_ms < last_end:
+                start_ms = last_end
 
-            prev_end = max(prev_end, seg_end)
+            if end_ms > start_ms:
+                normalized.append((start_ms, end_ms))
 
-        # 保存最后一段（只保留语音覆盖区间，不补齐尾部静音）
-        final_end = min(prev_end, total_duration_ms)
-        if final_end - current_start >= self.min_segment_ms:
-            merged.append((current_start, final_end))
+        if not normalized:
+            return self._split_by_fixed_duration(total_duration_ms)
+
+        merged: List[Tuple[int, int]] = [normalized[0]]
+        for start_ms, end_ms in normalized[1:]:
+            prev_start, prev_end = merged[-1]
+            silence_gap = start_ms - prev_end
+            prev_duration = prev_end - prev_start
+            cur_duration = end_ms - start_ms
+
+            should_merge_short_segment = (
+                0 <= silence_gap <= self.max_silence_ms
+                and (prev_duration < self.min_segment_ms or cur_duration < self.min_segment_ms)
+            )
+
+            if should_merge_short_segment:
+                merged[-1] = (prev_start, end_ms)
+            else:
+                merged.append((start_ms, end_ms))
 
         return merged
 
@@ -236,7 +249,7 @@ class AudioSplitter:
 
             # 贪婪合并
             merged_segments = self.merge_segments_greedy(vad_segments, total_duration_ms)
-            logger.info(f"重分段后分段数: {len(merged_segments)}")
+            logger.info(f"重分段完成: 原始VAD={len(vad_segments)}, 输出={len(merged_segments)}")
 
             # 切分音频并保存到临时文件
             logger.info("开始切分音频并保存临时文件...")
