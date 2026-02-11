@@ -298,22 +298,67 @@ class Qwen3ASREngine(BaseASREngine):
         sample_rate: int = 16000,
         word_timestamps: bool = False,
     ) -> List[ASRSegmentResult]:
-        valid = [(i, s) for i, s in enumerate(segments) if getattr(s, "temp_file", None)]
-        if not valid:
-            return [ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments]
-
-        indices, segs = zip(*valid)
-        results = self.model.transcribe(audio=[s.temp_file for s in segs], context=hotwords or "", return_time_stamps=word_timestamps)
-
         output = [ASRSegmentResult(text="", start_time=0.0, end_time=0.0) for _ in segments]
-        for idx, seg, result in zip(indices, segs, results):
-            output[idx] = ASRSegmentResult(
-                text=result.text or "",
+
+        valid: List[tuple[int, Any]] = []
+        for i, seg in enumerate(segments):
+            temp_file = getattr(seg, "temp_file", None)
+            if temp_file and os.path.exists(temp_file):
+                valid.append((i, seg))
+            else:
+                logger.warning(f"Qwen3 批处理片段无效或文件不存在: segment={i + 1}, file={temp_file}")
+
+        if not valid:
+            return output
+
+        def _build_result(seg: Any, result: Any) -> ASRSegmentResult:
+            return ASRSegmentResult(
+                text=(getattr(result, "text", "") or ""),
                 start_time=round(seg.start_sec, 2),
                 end_time=round(seg.end_sec, 2),
                 speaker_id=getattr(seg, "speaker_id", None),
                 word_tokens=_get_word_tokens(result, word_timestamps),
             )
+
+        indices, segs = zip(*valid)
+
+        try:
+            results = self.model.transcribe(
+                audio=[s.temp_file for s in segs],
+                context=hotwords or "",
+                return_time_stamps=word_timestamps,
+            )
+            if len(results) != len(segs):
+                raise DefaultServerErrorException(
+                    "Qwen3 批量结果数量不匹配: "
+                    f"expected={len(segs)}, got={len(results)}"
+                )
+
+            for idx, seg, result in zip(indices, segs, results):
+                output[idx] = _build_result(seg, result)
+            return output
+        except Exception as batch_error:
+            logger.warning(
+                "Qwen3 批量推理失败，降级为逐段推理: "
+                f"batch_size={len(segs)}, error={batch_error}"
+            )
+
+        for idx, seg in valid:
+            try:
+                single_result = self.model.transcribe(
+                    audio=seg.temp_file,
+                    context=hotwords or "",
+                    return_time_stamps=word_timestamps,
+                )
+                if single_result:
+                    output[idx] = _build_result(seg, single_result[0])
+                else:
+                    logger.warning(f"Qwen3 逐段推理返回空结果: segment={idx + 1}")
+            except Exception as single_error:
+                raise DefaultServerErrorException(
+                    f"Qwen3 逐段推理失败: segment={idx + 1}, error={single_error}"
+                ) from single_error
+
         return output
 
     @_handle_asr_error("初始化流式状态")
