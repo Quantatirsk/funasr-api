@@ -29,11 +29,6 @@ def get_expected_api_key(expected_token: Optional[str] = None) -> Optional[str]:
     return normalize_token(settings.API_KEY)
 
 
-def is_auth_enabled(expected_token: Optional[str] = None) -> bool:
-    """当前是否启用鉴权。"""
-    return get_expected_api_key(expected_token) is not None
-
-
 def mask_sensitive_data(
     data: str, mask_char: str = "*", keep_prefix: int = 4, keep_suffix: int = 4
 ) -> str:
