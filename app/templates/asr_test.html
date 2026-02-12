@@ -688,6 +688,21 @@
             return new Int16Array(buffer);
         }
 
+        function buildWebSocketUrl(baseUrl, token) {
+            if (!token) {
+                return baseUrl;
+            }
+
+            try {
+                const url = new URL(baseUrl);
+                url.searchParams.set('token', token);
+                return url.toString();
+            } catch (e) {
+                // URL 非标准时保持原值，避免影响手动输入场景
+                return baseUrl;
+            }
+        }
+
         // ==================== 协议切换 ====================
         function switchProtocol(protocol) {
             if (isRecording) {
@@ -827,7 +842,9 @@
 
         // ==================== WebSocket 生命周期 ====================
         async function startRecognition() {
-            const wsUrl = document.getElementById('wsUrl').value;
+            const wsUrlInput = document.getElementById('wsUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const wsUrl = buildWebSocketUrl(wsUrlInput, token);
             const protocol = protocols[currentProtocol];
 
             if (isRecording) {
@@ -845,7 +862,7 @@
                 protocol.reset();
 
                 updateStatus('正在连接WebSocket...', 'info');
-                log('开始连接WebSocket: ' + wsUrl, 'info');
+                log('开始连接WebSocket: ' + (token ? `${wsUrlInput} (token 已通过 query 参数传递)` : wsUrlInput), 'info');
 
                 websocket = new WebSocket(wsUrl);
                 websocket.binaryType = 'arraybuffer';

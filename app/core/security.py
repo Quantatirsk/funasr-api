@@ -44,8 +44,13 @@ def validate_token_value(token: str, expected_token: Optional[str] = None) -> bo
     Returns:
         bool: 验证结果
     """
-    # 如果没有配置期望的token，则鉴权是可选的
-    if expected_token is None:
+    # 如果没有配置期望的token（None/空字符串），则鉴权是可选的
+    normalized_expected_token = (
+        expected_token.strip()
+        if isinstance(expected_token, str)
+        else expected_token
+    )
+    if not normalized_expected_token:
         return True
 
     # 如果配置了期望的token，则必须提供token
@@ -57,7 +62,7 @@ def validate_token_value(token: str, expected_token: Optional[str] = None) -> bo
         return False
 
     # 验证token是否匹配
-    if token != expected_token:
+    if token != normalized_expected_token:
         return False
 
     return True
@@ -68,8 +73,8 @@ def validate_token(request: Request, task_id: str = "") -> tuple[bool, str]:
     # 获取认证token
     token = request.headers.get("X-NLS-Token")
 
-    # 如果没有配置API_KEY环境变量，则鉴权是可选的
-    if settings.API_KEY is None:
+    # 如果没有配置API_KEY环境变量（None/空字符串），则鉴权是可选的
+    if not settings.API_KEY:
         return True, token or "optional"
 
     # 如果配置了API_KEY，则必须提供token
@@ -85,8 +90,8 @@ def validate_token(request: Request, task_id: str = "") -> tuple[bool, str]:
 
 def validate_token_websocket(token: str, task_id: str = "") -> tuple[bool, str]:
     """验证WebSocket连接中的token"""
-    # 如果没有配置API_KEY环境变量，则鉴权是可选的
-    if settings.API_KEY is None:
+    # 如果没有配置API_KEY环境变量（None/空字符串），则鉴权是可选的
+    if not settings.API_KEY:
         return True, token or "optional"
 
     # 如果配置了API_KEY，则必须提供token

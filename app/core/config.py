@@ -113,7 +113,13 @@ class Settings:
         )
 
         # 鉴权配置
-        self.API_KEY = os.getenv("API_KEY", self.API_KEY)
+        # API_KEY 为空字符串或仅包含空白时，视为未配置（可选鉴权）
+        raw_api_key = os.getenv("API_KEY")
+        if raw_api_key is None:
+            self.API_KEY = self.API_KEY
+        else:
+            normalized_api_key = raw_api_key.strip()
+            self.API_KEY = normalized_api_key or None
 
         # 设备配置
         self.DEVICE = os.getenv("DEVICE", self.DEVICE)
