@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 from ..core.config import settings
 from ..core.executor import run_sync
-from ..core.security import validate_token_websocket
+from ..core.security import validate_websocket_token
 from ..utils.text_processing import apply_itn_to_text
 from ..utils.audio_filter import is_nearfield_voice
 from ..models.websocket_asr import (
@@ -107,31 +107,6 @@ class AliyunWebSocketASRService:
             logger.error(f"WebSocket ASR引擎加载失败: {e}")
             raise e
 
-    def _extract_websocket_token(self, websocket) -> Optional[str]:
-        """提取 WebSocket 鉴权 token。
-
-        优先级：
-        1. `X-NLS-Token` 请求头（兼容现有客户端）
-        2. URL 查询参数 `token` / `x_nls_token`（兼容浏览器 WebSocket）
-        """
-        token = None
-
-        if hasattr(websocket, "headers"):
-            token = websocket.headers.get("X-NLS-Token")
-            if isinstance(token, str):
-                token = token.strip()
-
-        if not token and hasattr(websocket, "query_params"):
-            token = (
-                websocket.query_params.get("token")
-                or websocket.query_params.get("x_nls_token")
-                or websocket.query_params.get("X-NLS-Token")
-            )
-            if isinstance(token, str):
-                token = token.strip()
-
-        return token or None
-
     async def _process_websocket_connection(self, websocket, task_id: str):
         """处理WebSocket连接"""
         state = ConnectionState.READY
@@ -153,20 +128,10 @@ class AliyunWebSocketASRService:
         logger.info(f"[{task_id}] WebSocket ASR连接开始")
 
         try:
-            x_nls_token = self._extract_websocket_token(websocket)
-            if settings.API_KEY and not x_nls_token:
-                await self._send_task_failed(
-                    websocket,
-                    task_id,
-                    "缺少鉴权信息，请通过 X-NLS-Token header 或 token/x_nls_token 查询参数传入",
-                )
+            result, message = validate_websocket_token(websocket, task_id)
+            if not result:
+                await self._send_task_failed(websocket, task_id, message)
                 return
-
-            if x_nls_token:
-                result, message = validate_token_websocket(x_nls_token, task_id)
-                if not result:
-                    await self._send_task_failed(websocket, task_id, message)
-                    return
 
             while True:
                 message = await websocket.receive()

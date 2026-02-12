@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from ...core.config import settings
 from ...core.executor import run_sync
-from ...core.security import validate_token
+from ...core.security import validate_openai_token
 from ...core.exceptions import (
     InvalidParameterException,
     create_error_response,
@@ -215,9 +215,8 @@ def _get_openai_model_description() -> str:
 )
 async def list_models(request: Request):
     """列出可用模型 (OpenAI 兼容)"""
-    # 可选鉴权
-    result, _ = validate_token(request)
-    if not result and settings.API_KEY:
+    result, _ = validate_openai_token(request)
+    if not result:
         response_data = create_error_response(
             error_code="AUTHENTICATION_FAILED",
             message="Invalid authentication",
@@ -419,25 +418,13 @@ async def create_transcription(
     audio_service = get_audio_service()
 
     try:
-        # 可选鉴权 (支持 Bearer Token)
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            if settings.API_KEY and token != settings.API_KEY:
-                response_data = create_error_response(
-                    error_code="AUTHENTICATION_FAILED",
-                    message="Invalid API key",
-                )
-                return JSONResponse(content=response_data, status_code=401)
-        elif settings.API_KEY:
-            # 如果配置了 API_KEY 但请求没有提供
-            result, _ = validate_token(request)
-            if not result:
-                response_data = create_error_response(
-                    error_code="AUTHENTICATION_FAILED",
-                    message="Invalid authentication",
-                )
-                return JSONResponse(content=response_data, status_code=401)
+        result, _ = validate_openai_token(request)
+        if not result:
+            response_data = create_error_response(
+                error_code="AUTHENTICATION_FAILED",
+                message="Invalid authentication",
+            )
+            return JSONResponse(content=response_data, status_code=401)
 
         # 处理音频输入（URL 下载 或 文件上传）
         if audio_address:

@@ -112,14 +112,8 @@ class Settings:
             os.getenv("LOG_BACKUP_COUNT", str(self.LOG_BACKUP_COUNT))
         )
 
-        # 鉴权配置
-        # API_KEY 为空字符串或仅包含空白时，视为未配置（可选鉴权）
-        raw_api_key = os.getenv("API_KEY")
-        if raw_api_key is None:
-            self.API_KEY = self.API_KEY
-        else:
-            normalized_api_key = raw_api_key.strip()
-            self.API_KEY = normalized_api_key or None
+        # 鉴权配置：空值/空白统一视为未配置
+        self.API_KEY = (os.getenv("API_KEY") or "").strip() or None
 
         # 设备配置
         self.DEVICE = os.getenv("DEVICE", self.DEVICE)
