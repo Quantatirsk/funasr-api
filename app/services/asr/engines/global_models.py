@@ -33,8 +33,6 @@ _punc_realtime_inference_lock = threading.Lock()  # 推理互斥锁，防止并�
 
 # 全局主ASR推理锁（临时串行化主模型推理，避免并发状态串扰）
 _main_asr_inference_lock = threading.Lock()
-# 全局长音频请求锁（整次 transcribe_long_audio 串行，避免请求交错）
-_main_asr_request_lock = threading.Lock()
 
 
 def _resolve_device(device: str) -> str:
@@ -176,11 +174,6 @@ def get_punc_realtime_inference_lock():
 def get_main_asr_inference_lock():
     """获取主ASR推理锁（线程安全）"""
     return _main_asr_inference_lock
-
-
-def get_main_asr_request_lock():
-    """获取主ASR长音频请求锁（线程安全）"""
-    return _main_asr_request_lock
 
 
 def clear_global_punc_realtime_model():
