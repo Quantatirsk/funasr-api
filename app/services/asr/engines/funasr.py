@@ -21,6 +21,7 @@ from app.services.asr.engines.global_models import (
     get_global_punc_model,
     get_vad_inference_lock,
     get_punc_inference_lock,
+    get_main_asr_inference_lock,
 )
 
 
@@ -189,7 +190,9 @@ class FunASREngine(RealTimeASREngine):
                     audio_path, generate_kwargs, enable_punctuation
                 )
             else:
-                result = self.offline_model.generate(**generate_kwargs)
+                # 主ASR推理加全局锁，避免并发请求串音
+                with get_main_asr_inference_lock():
+                    result = self.offline_model.generate(**generate_kwargs)
 
                 # 如果需要 PUNC，手动添加
                 if enable_punctuation:
@@ -535,8 +538,9 @@ class FunASREngine(RealTimeASREngine):
             generate_kwargs['input'] = batch_audio_data
             generate_kwargs['batch_size'] = len(batch_audio_data)
 
-            # 批量推理
-            batch_results = self.offline_model.generate(**generate_kwargs)
+            # 主ASR批量推理加全局锁，避免并发请求串音
+            with get_main_asr_inference_lock():
+                batch_results = self.offline_model.generate(**generate_kwargs)
 
             # 解析批量结果
             batch_results_parsed = []

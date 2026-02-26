@@ -52,6 +52,7 @@ from ..models.websocket_asr import (
     AliyunASRMessageName,
     AliyunASRStatus,
 )
+from .asr.engines.global_models import get_main_asr_inference_lock
 
 logger = logging.getLogger(__name__)
 
@@ -704,16 +705,22 @@ class AliyunWebSocketASRService:
             # 使用线程池执行模型推理，避免阻塞事件循环
             # 将 asr_engine 转换为 FunASREngine 以访问 realtime_model
             funasr_engine = cast("FunASREngine", asr_engine)
-            assert funasr_engine.realtime_model is not None, "实时模型未加载"
-            result = await run_sync(
-                funasr_engine.realtime_model.generate,
-                input=audio_array,
-                cache=cache,
-                is_final=is_final,
-                chunk_size=chunk_size,
-                encoder_chunk_look_back=encoder_chunk_look_back,
-                decoder_chunk_look_back=decoder_chunk_look_back,
-            )
+            realtime_model = funasr_engine.realtime_model
+            if realtime_model is None:
+                raise Exception("实时模型未加载")
+            # 主ASR推理加全局锁，避免并发连接串音
+            def _realtime_generate_with_lock():
+                with get_main_asr_inference_lock():
+                    return realtime_model.generate(
+                        input=audio_array,
+                        cache=cache,
+                        is_final=is_final,
+                        chunk_size=chunk_size,
+                        encoder_chunk_look_back=encoder_chunk_look_back,
+                        decoder_chunk_look_back=decoder_chunk_look_back,
+                    )
+
+            result = await run_sync(_realtime_generate_with_lock)
 
             logger.debug(f"[{task_id}] ASR模型返回结果: {result}")
 

@@ -31,6 +31,9 @@ _global_punc_realtime_model = None
 _punc_realtime_model_lock = threading.Lock()
 _punc_realtime_inference_lock = threading.Lock()  # 推理互斥锁，防止并发状态混乱
 
+# 全局主ASR推理锁（临时串行化主模型推理，避免并发状态串扰）
+_main_asr_inference_lock = threading.Lock()
+
 
 def _resolve_device(device: str) -> str:
     """解析设备字符串，将 auto 转换为实际的设备"""
@@ -166,6 +169,11 @@ def get_global_punc_realtime_model(device: str):
 def get_punc_realtime_inference_lock():
     """获取实时PUNC模型推理锁（线程安全）"""
     return _punc_realtime_inference_lock
+
+
+def get_main_asr_inference_lock():
+    """获取主ASR推理锁（线程安全）"""
+    return _main_asr_inference_lock
 
 
 def clear_global_punc_realtime_model():

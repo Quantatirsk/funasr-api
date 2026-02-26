@@ -10,6 +10,7 @@ import torch
 import numpy as np
 
 from .engines import BaseASREngine, ASRRawResult, ASRSegmentResult, WordToken
+from .engines.global_models import get_main_asr_inference_lock
 from ...core.config import settings
 from ...core.exceptions import DefaultServerErrorException
 
@@ -234,7 +235,12 @@ class Qwen3ASREngine(BaseASREngine):
         enable_vad: bool = False,
         sample_rate: int = 16000,
     ) -> str:
-        results = self.model.transcribe(audio=audio_path, context=hotwords or "", return_time_stamps=False)
+        with get_main_asr_inference_lock():
+            results = self.model.transcribe(
+                audio=audio_path,
+                context=hotwords or "",
+                return_time_stamps=False,
+            )
         return results[0].text if results else ""
 
     @_handle_asr_error("VAD 转写")
@@ -248,7 +254,12 @@ class Qwen3ASREngine(BaseASREngine):
         **kwargs,
     ) -> ASRRawResult:
         word_timestamps = kwargs.get("word_timestamps", True)
-        results = self.model.transcribe(audio=audio_path, context=hotwords or "", return_time_stamps=True)
+        with get_main_asr_inference_lock():
+            results = self.model.transcribe(
+                audio=audio_path,
+                context=hotwords or "",
+                return_time_stamps=True,
+            )
         if not results:
             return ASRRawResult(text="", segments=[])
 
@@ -323,11 +334,12 @@ class Qwen3ASREngine(BaseASREngine):
         indices, segs = zip(*valid)
 
         try:
-            results = self.model.transcribe(
-                audio=[seg.temp_file for seg in segs],
-                context=hotwords or "",
-                return_time_stamps=word_timestamps,
-            )
+            with get_main_asr_inference_lock():
+                results = self.model.transcribe(
+                    audio=[seg.temp_file for seg in segs],
+                    context=hotwords or "",
+                    return_time_stamps=word_timestamps,
+                )
             if len(results) != len(segs):
                 raise DefaultServerErrorException(
                     "Qwen3 批量结果数量不匹配: "
@@ -345,11 +357,12 @@ class Qwen3ASREngine(BaseASREngine):
 
         for idx, seg in valid:
             try:
-                single_results = self.model.transcribe(
-                    audio=seg.temp_file,
-                    context=hotwords or "",
-                    return_time_stamps=word_timestamps,
-                )
+                with get_main_asr_inference_lock():
+                    single_results = self.model.transcribe(
+                        audio=seg.temp_file,
+                        context=hotwords or "",
+                        return_time_stamps=word_timestamps,
+                    )
                 if single_results:
                     output[idx] = _build_result(seg, single_results[0])
                 else:
@@ -369,7 +382,8 @@ class Qwen3ASREngine(BaseASREngine):
     @_handle_asr_error("流式识别")
     def streaming_transcribe(self, pcm16k: np.ndarray, state: Qwen3StreamingState) -> Qwen3StreamingState:
         pcm = pcm16k.astype(np.float32) / (32768.0 if pcm16k.dtype == np.int16 else 1.0)
-        self.model.streaming_transcribe(pcm, state.internal_state)
+        with get_main_asr_inference_lock():
+            self.model.streaming_transcribe(pcm, state.internal_state)
         state.chunk_count += 1
         state.last_text = state.internal_state.text
         state.last_language = state.internal_state.language
@@ -377,7 +391,8 @@ class Qwen3ASREngine(BaseASREngine):
 
     @_handle_asr_error("结束流式识别")
     def finish_streaming_transcribe(self, state: Qwen3StreamingState) -> Qwen3StreamingState:
-        self.model.finish_streaming_transcribe(state.internal_state)
+        with get_main_asr_inference_lock():
+            self.model.finish_streaming_transcribe(state.internal_state)
         state.last_text = state.internal_state.text
         state.last_language = state.internal_state.language
         return state
