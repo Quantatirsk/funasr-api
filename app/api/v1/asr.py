@@ -35,6 +35,7 @@ from ...models.asr import (
 )
 from ...utils.common import generate_task_id
 from ...services.asr.manager import get_model_manager
+from ...services.asr.engines.global_models import get_main_asr_request_lock
 from ...services.asr.validators import AudioParamsValidator
 from ...services.audio import get_audio_service
 
@@ -347,16 +348,28 @@ async def asr_transcribe(
         logger.info(f"[{task_id}] 开始调用 transcribe_long_audio (enable_speaker_diarization={params.enable_speaker_diarization})...")
         sys.stdout.flush()
 
-        asr_result = await run_sync(
-            asr_engine.transcribe_long_audio,
-            audio_path=normalized_audio_path,
-            hotwords=hotwords,
-            enable_punctuation=True,  # 默认开启标点预测
-            enable_itn=True,  # 默认开启数字转换
-            sample_rate=params.sample_rate,
-            enable_speaker_diarization=params.enable_speaker_diarization if params.enable_speaker_diarization is not None else True,
-            word_timestamps=params.word_timestamps if params.word_timestamps is not None else False,
-        )
+        def _transcribe_long_audio_with_request_lock():
+            # 整次请求串行化，避免不同请求在同模型上交错执行
+            with get_main_asr_request_lock():
+                return asr_engine.transcribe_long_audio(
+                    audio_path=normalized_audio_path,
+                    hotwords=hotwords,
+                    enable_punctuation=True,  # 默认开启标点预测
+                    enable_itn=True,  # 默认开启数字转换
+                    sample_rate=target_sample_rate,
+                    enable_speaker_diarization=(
+                        params.enable_speaker_diarization
+                        if params.enable_speaker_diarization is not None
+                        else True
+                    ),
+                    word_timestamps=(
+                        params.word_timestamps
+                        if params.word_timestamps is not None
+                        else False
+                    ),
+                )
+
+        asr_result = await run_sync(_transcribe_long_audio_with_request_lock)
 
         logger.info(f"[{task_id}] 识别完成，共 {len(asr_result.segments)} 个分段，总字符: {len(asr_result.text)}")
 

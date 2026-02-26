@@ -21,6 +21,7 @@ from ...core.exceptions import (
     create_error_response,
 )
 from ...services.asr.manager import get_model_manager
+from ...services.asr.engines.global_models import get_main_asr_request_lock
 from ...services.asr.validators import _get_default_model, _get_dynamic_model_list
 from ...services.audio import get_audio_service
 
@@ -463,16 +464,20 @@ async def create_transcription(
 
         # 执行语音识别
         # 注：prompt 参数接收但不使用，FunASR 热词格式与 OpenAI prompt 不兼容
-        asr_result = await run_sync(
-            asr_engine.transcribe_long_audio,
-            audio_path=normalized_audio_path,
-            hotwords="",
-            enable_punctuation=True,
-            enable_itn=True,
-            sample_rate=16000,
-            enable_speaker_diarization=enable_speaker_diarization,
-            word_timestamps=word_timestamps,
-        )
+        def _transcribe_long_audio_with_request_lock():
+            # 整次请求串行化，避免不同请求在同模型上交错执行
+            with get_main_asr_request_lock():
+                return asr_engine.transcribe_long_audio(
+                    audio_path=normalized_audio_path,
+                    hotwords="",
+                    enable_punctuation=True,
+                    enable_itn=True,
+                    sample_rate=16000,
+                    enable_speaker_diarization=enable_speaker_diarization,
+                    word_timestamps=word_timestamps,
+                )
+
+        asr_result = await run_sync(_transcribe_long_audio_with_request_lock)
 
         logger.info(f"[OpenAI API] 识别完成: {len(asr_result.text)} 字符")
 
