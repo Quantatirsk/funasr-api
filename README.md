@@ -48,11 +48,18 @@ docker-compose up -d
 
 # Or CPU version
 docker-compose -f docker-compose-cpu.yml up -d
+
+# Multi-GPU auto mode (one instance per visible GPU)
+NVIDIA_VISIBLE_DEVICES=0,1,2,3 docker-compose up -d
 ```
 
 Service URLs:
 - **API Endpoint**: `http://localhost:17003`
 - **API Docs**: `http://localhost:17003/docs`
+
+Optional built-in rate limit settings:
+- `NGINX_RATE_LIMIT_RPS` (global requests/sec, `0` = disabled)
+- `NGINX_RATE_LIMIT_BURST` (global burst, `0` = auto use RPS)
 
 **docker run (alternative):**
 
@@ -62,6 +69,7 @@ docker run -d --name funasr-api \
   --gpus all \
   -p 17003:8000 \
   -e ENABLED_MODELS=auto \
+  -e NVIDIA_VISIBLE_DEVICES=0,1,2,3 \
   -e API_KEY=your_api_key \
   -v ./models/modelscope:/root/.cache/modelscope \
   -v ./models/huggingface:/root/.cache/huggingface \

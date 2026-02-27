@@ -1,22 +1,9 @@
 services:
-  nginx:
-    image: nginx:latest
-    container_name: funasr-nginx
-    ports:
-      - "${NGINX_PORT:-17003}:80"
-    volumes:
-      - ./funasr.conf:/etc/nginx/conf.d/default.conf
-    depends_on:
-      - funasr-api
-    restart: unless-stopped
-    networks:
-      - funasr-net
-
   funasr-api:
     image: quantatrisk/funasr-api:gpu-latest
     container_name: funasr-api
-    expose:
-      - "8000"
+    ports:
+      - "${NGINX_PORT:-17003}:8000"
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
@@ -29,11 +16,8 @@ services:
       MODELSCOPE_PATH: /root/.cache/modelscope/hub/models
       HF_HOME: /root/.cache/huggingface
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-}
-      NVIDIA_VISIBLE_DEVICES: 0
+      HF_ENDPOINT: ${HF_ENDPOINT:-}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-0}
+      NGINX_RATE_LIMIT_RPS: ${NGINX_RATE_LIMIT_RPS:-0}
+      NGINX_RATE_LIMIT_BURST: ${NGINX_RATE_LIMIT_BURST:-0}
     restart: unless-stopped
-    networks:
-      - funasr-net
-
-networks:
-  funasr-net:
-    name: funasr-net

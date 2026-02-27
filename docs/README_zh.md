@@ -46,11 +46,18 @@ docker-compose up -d
 
 # 或 CPU 版本
 docker-compose -f docker-compose-cpu.yml up -d
+
+# 多卡自动模式（每张可见卡自动拉起 1 个实例）
+NVIDIA_VISIBLE_DEVICES=0,1,2,3 docker-compose up -d
 ```
 
 服务访问地址：
 - **API 端点**: `http://localhost:17003`
 - **API 文档**: `http://localhost:17003/docs`
+
+可选的内置限流参数：
+- `NGINX_RATE_LIMIT_RPS`（全局每秒请求上限，`0` 表示关闭）
+- `NGINX_RATE_LIMIT_BURST`（全局突发请求数，`0` 时自动使用 RPS）
 
 **docker run 方式（替代）:**
 
@@ -60,6 +67,7 @@ docker run -d --name funasr-api \
   --gpus all \
   -p 17003:8000 \
   -e ENABLED_MODELS=auto \
+  -e NVIDIA_VISIBLE_DEVICES=0,1,2,3 \
   -e API_KEY=your_api_key \
   -v ./models/modelscope:/root/.cache/modelscope \
   -v ./models/huggingface:/root/.cache/huggingface \

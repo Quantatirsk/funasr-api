@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         sox \
         libsox-dev \
         libsndfile1 \
+        nginx \
         build-essential \
         curl
 
@@ -50,8 +51,9 @@ COPY . .
 
 # Create runtime directories
 RUN mkdir -p /app/temp /app/data /app/logs \
-    && chmod +x start.py
+    && chmod +x start.py /app/scripts/docker/entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/scripts/docker/entrypoint.sh"]
 CMD ["/opt/venv/bin/python", "start.py"]
