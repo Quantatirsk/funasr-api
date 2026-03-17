@@ -11,14 +11,16 @@ import soundfile as sf
 import tempfile
 import os
 import threading
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional, Sequence
 from dataclasses import dataclass
+
+import torch
 
 from ..core.config import settings
 from ..core.exceptions import DefaultServerErrorException
 
 # 全局 CAM++ pipeline 缓存（单例）
-_global_diarization_pipeline = None
+_global_diarization_pipeline: Any | None = None
 _diarization_pipeline_lock = threading.Lock()
 
 
@@ -49,26 +51,196 @@ class SpeakerSegment:
         return self.duration_ms / 1000.0
 
 
-def get_global_diarization_pipeline():
+def _resolve_modelscope_device() -> str:
+    """根据配置和硬件自动选择 modelscope pipeline 设备"""
+    configured_device = settings.DEVICE.strip().lower()
+
+    if configured_device == "auto":
+        return "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    if configured_device == "cuda":
+        return "cuda:0"
+
+    return configured_device
+
+
+def _move_pipeline_model_to_device(pipeline_instance: Any, modelscope_device: str) -> None:
+    """将 pipeline 的底层模型迁移到目标设备。"""
+    model = getattr(pipeline_instance, "model", None)
+    if model is not None and hasattr(model, "to"):
+        pipeline_instance.model = model.to(modelscope_device)
+
+
+def _create_modelscope_pipeline(
+    *,
+    task: Any,
+    model: str,
+    modelscope_device: str,
+    model_revision: Optional[str] = None,
+) -> Any:
+    """创建 modelscope pipeline，并在需要时把底层模型迁移到目标设备。"""
+    from modelscope.pipelines import pipeline
+
+    pipeline_kwargs: dict[str, Any] = {
+        "task": task,
+        "model": model,
+    }
+    if model_revision is not None:
+        pipeline_kwargs["model_revision"] = model_revision
+
+    pipeline_instance = pipeline(**pipeline_kwargs)
+    _move_pipeline_model_to_device(pipeline_instance, modelscope_device)
+    return pipeline_instance
+
+
+def _enable_batched_sv(
+    pipeline_instance: Any,
+    modelscope_device: str,
+    max_batch_size: int = 16,
+) -> Any:
+    """
+    对说话人分离 pipeline 启用 batched SV 推理。
+
+    原始 pipeline 的 forward 方法逐个 segment 调用 sv_pipeline 提取 embedding，
+    这里改为将所有 segment 拼成一个 batch 一次性推理，大幅减少 GPU 调用次数。
+    同时将子 pipeline（sv / vad / change_locator）绑定到指定 device。
+
+    Args:
+        pipeline_instance: CAM++ diarization pipeline 实例
+        modelscope_device: 设备名称
+        max_batch_size: 最大批处理大小，防止 OOM
+    """
+    if getattr(pipeline_instance, "_batched_sv_enabled", False):
+        return pipeline_instance
+
+    from modelscope.utils.constant import Tasks
+
+    config = getattr(pipeline_instance, "config", None)
+    if not isinstance(config, Mapping):
+        logger.warning("CAM++ pipeline 缺少可读取的 config，跳过 batched SV 优化")
+        return pipeline_instance
+
+    sv_model = config.get("speaker_model")
+    vad_model = config.get("vad_model")
+    change_locator = config.get("change_locator")
+
+    if isinstance(sv_model, str) and sv_model:
+        pipeline_instance.sv_pipeline = _create_modelscope_pipeline(
+            task=Tasks.speaker_verification,
+            model=sv_model,
+            modelscope_device=modelscope_device,
+        )
+
+    if isinstance(vad_model, str) and vad_model:
+        pipeline_instance.vad_pipeline = _create_modelscope_pipeline(
+            task=Tasks.voice_activity_detection,
+            model=vad_model,
+            modelscope_device=modelscope_device,
+            model_revision="v2.0.2",
+        )
+
+    if isinstance(change_locator, str) and change_locator:
+        pipeline_instance.change_locator_pipeline = _create_modelscope_pipeline(
+            task=Tasks.speaker_diarization,
+            model=change_locator,
+            modelscope_device=modelscope_device,
+        )
+
+    def batched_forward(self: Any, segments: Sequence[Sequence[Any]]) -> np.ndarray:
+        """批量提取说话人 embedding，替代逐段串行推理"""
+        sv_model_instance = getattr(getattr(self, "sv_pipeline", None), "model", None)
+        emb_size = int(getattr(sv_model_instance, "emb_size", 192))
+
+        if not segments:
+            return np.empty((0, emb_size), dtype=np.float32)
+
+        if sv_model_instance is None:
+            raise RuntimeError("CAM++ sv_pipeline.model 未初始化")
+
+        all_embeddings: list[np.ndarray] = []
+        total_segments = len(segments)
+        start_idx = 0
+
+        while start_idx < total_segments:
+            end_idx = min(start_idx + max_batch_size, total_segments)
+            batch_segments = segments[start_idx:end_idx]
+
+            batch_items: list[np.ndarray] = []
+            for segment in batch_segments:
+                if len(segment) < 3:
+                    continue
+                batch_items.append(np.asarray(segment[2], dtype=np.float32))
+
+            if not batch_items:
+                start_idx = end_idx
+                continue
+
+            batch = np.stack(batch_items, axis=0)
+
+            with torch.no_grad():
+                embeddings = sv_model_instance(
+                    torch.from_numpy(batch).to(modelscope_device)
+                )
+
+            if isinstance(embeddings, torch.Tensor):
+                all_embeddings.append(embeddings.detach().cpu().numpy())
+            else:
+                all_embeddings.append(np.asarray(embeddings, dtype=np.float32))
+
+            start_idx = end_idx
+
+        if not all_embeddings:
+            return np.empty((0, emb_size), dtype=np.float32)
+
+        return (
+            np.concatenate(all_embeddings, axis=0)
+            if len(all_embeddings) > 1
+            else all_embeddings[0]
+        )
+
+    import types
+
+    pipeline_instance.forward = types.MethodType(batched_forward, pipeline_instance)
+    pipeline_instance._batched_sv_enabled = True
+
+    logger.info(
+        "CAM++ 说话人分离启用 batched SV: device={}, sv_device={}, vad_device={}",
+        modelscope_device,
+        getattr(getattr(pipeline_instance, "sv_pipeline", None), "device_name", "unknown"),
+        getattr(getattr(pipeline_instance, "vad_pipeline", None), "device_name", "unknown"),
+    )
+    return pipeline_instance
+
+
+def get_global_diarization_pipeline() -> Any:
     """获取全局说话人分离 pipeline（懒加载单例）"""
     global _global_diarization_pipeline
 
     with _diarization_pipeline_lock:
         if _global_diarization_pipeline is None:
             try:
-                from modelscope.pipelines import pipeline
                 from modelscope.utils.constant import Tasks
                 from ..infrastructure.model_utils import resolve_model_path
 
                 model_id = 'iic/speech_campplus_speaker-diarization_common'
                 model_path = resolve_model_path(model_id)
+                modelscope_device = _resolve_modelscope_device()
 
-                logger.info(f"正在加载 CAM++ 说话人分离模型: {model_path}")
-                _global_diarization_pipeline = pipeline(
+                logger.info(
+                    "正在加载 CAM++ 说话人分离模型: {}, device={}",
+                    model_path,
+                    modelscope_device,
+                )
+                _global_diarization_pipeline = _create_modelscope_pipeline(
                     task=Tasks.speaker_diarization,
                     model=model_path,
+                    modelscope_device=modelscope_device,
                 )
-                logger.info("CAM++ 模型加载成功")
+
+                _global_diarization_pipeline = _enable_batched_sv(
+                    _global_diarization_pipeline, modelscope_device
+                )
+                logger.info("CAM++ 模型加载成功（已启用 batched SV）")
             except Exception as e:
                 logger.error(f"CAM++ 模型加载失败: {e}")
                 raise DefaultServerErrorException(f"说话人分离模型加载失败: {str(e)}")
