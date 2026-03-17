@@ -21,6 +21,13 @@ from ..core.exceptions import DefaultServerErrorException
 _global_diarization_pipeline = None
 _diarization_pipeline_lock = threading.Lock()
 
+_global_sv_pipeline = None
+_sv_pipeline_lock = threading.Lock()
+
+# 推理锁（防止并发推理冲突）
+sv_inference_lock = threading.Lock()
+diarization_inference_lock = threading.Lock()
+
 
 @dataclass
 class SpeakerSegment:
@@ -49,6 +56,99 @@ class SpeakerSegment:
         return self.duration_ms / 1000.0
 
 
+def _resolve_modelscope_device() -> str:
+    """根据配置和硬件自动选择 modelscope pipeline 设备"""
+    configured_device = str(getattr(settings, "DEVICE", "auto") or "auto").strip()
+    normalized = configured_device.lower()
+
+    if normalized == "auto":
+        try:
+            import torch
+            return "cuda:0" if torch.cuda.is_available() else "cpu"
+        except Exception as exc:
+            logger.warning(f"检测 CAM++ pipeline 设备失败，回退到 CPU: {exc}")
+            return "cpu"
+
+    if normalized == "cuda":
+        return "cuda:0"
+
+    return configured_device
+
+
+def _enable_batched_sv(pipeline_instance, modelscope_device: str):
+    """
+    对说话人分离 pipeline 启用 batched SV 推理。
+
+    原始 pipeline 的 forward 方法逐个 segment 调用 sv_pipeline 提取 embedding，
+    这里改为将所有 segment 拼成一个 batch 一次性推理，大幅减少 GPU 调用次数。
+    同时将子 pipeline（sv / vad / change_locator）绑定到指定 device。
+    """
+    if getattr(pipeline_instance, "_batched_sv_enabled", False):
+        return pipeline_instance
+
+    import types
+    import torch
+    from modelscope.pipelines import pipeline as modelscope_pipeline
+    from modelscope.utils.constant import Tasks
+
+    sv_model = pipeline_instance.config.get("speaker_model")
+    vad_model = pipeline_instance.config.get("vad_model")
+    change_locator = pipeline_instance.config.get("change_locator")
+
+    # 重新创建子 pipeline 并绑定到指定设备
+    if sv_model:
+        pipeline_instance.sv_pipeline = modelscope_pipeline(
+            task=Tasks.speaker_verification,
+            model=sv_model,
+            device=modelscope_device,
+        )
+
+    if vad_model:
+        pipeline_instance.vad_pipeline = modelscope_pipeline(
+            task=Tasks.voice_activity_detection,
+            model=vad_model,
+            model_revision="v2.0.2",
+            device=modelscope_device,
+        )
+
+    if change_locator:
+        pipeline_instance.change_locator_pipeline = modelscope_pipeline(
+            task=Tasks.speaker_diarization,
+            model=change_locator,
+            device=modelscope_device,
+        )
+
+    def batched_forward(self, segments: list) -> np.ndarray:
+        """批量提取说话人 embedding，替代逐段串行推理"""
+        if not segments:
+            emb_size = getattr(
+                getattr(self.sv_pipeline, "model", None), "emb_size", 192
+            )
+            return np.empty((0, emb_size), dtype=np.float32)
+
+        batch = np.stack(
+            [segment[2] for segment in segments], axis=0
+        ).astype(np.float32, copy=False)
+
+        with torch.no_grad():
+            embeddings = self.sv_pipeline.model(torch.from_numpy(batch))
+
+        if isinstance(embeddings, torch.Tensor):
+            return embeddings.detach().cpu().numpy()
+        return np.asarray(embeddings, dtype=np.float32)
+
+    pipeline_instance.forward = types.MethodType(batched_forward, pipeline_instance)
+    pipeline_instance._batched_sv_enabled = True
+
+    logger.info(
+        "CAM++ 说话人分离启用 batched SV: "
+        f"device={modelscope_device}, "
+        f"sv_device={getattr(pipeline_instance.sv_pipeline, 'device_name', 'unknown')}, "
+        f"vad_device={getattr(pipeline_instance.vad_pipeline, 'device_name', 'unknown')}"
+    )
+    return pipeline_instance
+
+
 def get_global_diarization_pipeline():
     """获取全局说话人分离 pipeline（懒加载单例）"""
     global _global_diarization_pipeline
@@ -62,18 +162,62 @@ def get_global_diarization_pipeline():
 
                 model_id = 'iic/speech_campplus_speaker-diarization_common'
                 model_path = resolve_model_path(model_id)
+                modelscope_device = _resolve_modelscope_device()
 
-                logger.info(f"正在加载 CAM++ 说话人分离模型: {model_path}")
+                logger.info(
+                    f"正在加载 CAM++ 说话人分离模型: {model_path}, device={modelscope_device}"
+                )
                 _global_diarization_pipeline = pipeline(
                     task=Tasks.speaker_diarization,
                     model=model_path,
+                    device=modelscope_device,
                 )
-                logger.info("CAM++ 模型加载成功")
+
+                _global_diarization_pipeline = _enable_batched_sv(
+                    _global_diarization_pipeline, modelscope_device
+                )
+                logger.info("CAM++ 模型加载成功（已启用 batched SV）")
             except Exception as e:
                 logger.error(f"CAM++ 模型加载失败: {e}")
                 raise DefaultServerErrorException(f"说话人分离模型加载失败: {str(e)}")
 
     return _global_diarization_pipeline
+
+
+def get_global_sv_pipeline():
+    """获取全局 CAM++ 说话人验证 pipeline（懒加载单例）"""
+    global _global_sv_pipeline
+
+    with _sv_pipeline_lock:
+        if _global_sv_pipeline is None:
+            try:
+                from modelscope.pipelines import pipeline
+                from modelscope.utils.constant import Tasks
+                from ..infrastructure.model_utils import resolve_model_path
+
+                model_id = "iic/speech_campplus_sv_zh-cn_16k-common"
+                model_path = resolve_model_path(model_id)
+                modelscope_device = _resolve_modelscope_device()
+
+                logger.info(
+                    f"正在加载 CAM++ SV 模型: {model_path}, device={modelscope_device}"
+                )
+
+                pipeline_kwargs = {
+                    "task": Tasks.speaker_verification,
+                    "model": model_path,
+                    "device": modelscope_device,
+                }
+                if model_path == model_id:
+                    pipeline_kwargs["model_revision"] = "v1.0.0"
+
+                _global_sv_pipeline = pipeline(**pipeline_kwargs)
+                logger.info("CAM++ SV 模型加载成功")
+            except Exception as e:
+                logger.error(f"CAM++ SV 模型加载失败: {e}")
+                raise DefaultServerErrorException(f"说话人验证模型加载失败: {str(e)}")
+
+    return _global_sv_pipeline
 
 
 class SpeakerDiarizer:
