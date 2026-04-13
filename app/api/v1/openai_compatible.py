@@ -275,9 +275,13 @@ def create_heartbeat_streaming_response(
         heartbeat_count = 0
 
         try:
-            while not inference_task.done():
-                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
-                if inference_task.done():
+            while True:
+                done, _pending = await asyncio.wait(
+                    {inference_task},
+                    timeout=HEARTBEAT_INTERVAL_SECONDS,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if inference_task in done:
                     break
 
                 heartbeat_count += 1
