@@ -5,11 +5,114 @@
 """
 
 import logging
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class ModelIntegritySpec:
+    description: str
+    path: Path
+    required_patterns: tuple[str, ...]
+    min_total_size_bytes: int = 0
+
+
+def _format_bytes(num_bytes: int) -> str:
+    value = float(num_bytes)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    for unit in units:
+        if value < 1024.0 or unit == units[-1]:
+            return f"{value:.1f}{unit}"
+        value /= 1024.0
+    return f"{num_bytes}B"
+
+
+def _find_pattern_matches(root: Path, pattern: str) -> list[Path]:
+    return [path for path in root.glob(pattern) if path.is_file()]
+
+
+def _check_model_integrity_spec(spec: ModelIntegritySpec) -> dict[str, Any]:
+    if not spec.path.exists() or not spec.path.is_dir():
+        return {
+            "description": spec.description,
+            "path": str(spec.path),
+            "ok": False,
+            "missing_patterns": list(spec.required_patterns),
+            "total_size_bytes": 0,
+            "reason": "directory_missing",
+        }
+
+    files = [path for path in spec.path.rglob("*") if path.is_file()]
+    total_size_bytes = sum(path.stat().st_size for path in files)
+
+    missing_patterns = [
+        pattern for pattern in spec.required_patterns
+        if not _find_pattern_matches(spec.path, pattern)
+    ]
+    if missing_patterns:
+        return {
+            "description": spec.description,
+            "path": str(spec.path),
+            "ok": False,
+            "missing_patterns": missing_patterns,
+            "total_size_bytes": total_size_bytes,
+            "reason": "required_files_missing",
+        }
+
+    if total_size_bytes < spec.min_total_size_bytes:
+        return {
+            "description": spec.description,
+            "path": str(spec.path),
+            "ok": False,
+            "missing_patterns": [],
+            "total_size_bytes": total_size_bytes,
+            "reason": "directory_too_small",
+        }
+
+    return {
+        "description": spec.description,
+        "path": str(spec.path),
+        "ok": True,
+        "missing_patterns": [],
+        "total_size_bytes": total_size_bytes,
+        "reason": "ok",
+    }
+
+
+def _build_modelscope_spec(
+    model_id: str,
+    description: str,
+    required_patterns: tuple[str, ...],
+    *,
+    min_total_size_bytes: int,
+) -> ModelIntegritySpec:
+    from ..core.config import settings
+
+    return ModelIntegritySpec(
+        description=description,
+        path=Path(settings.MODELSCOPE_PATH) / model_id,
+        required_patterns=required_patterns,
+        min_total_size_bytes=min_total_size_bytes,
+    )
+
+
+def _build_huggingface_spec(
+    model_id: str,
+    description: str,
+    required_patterns: tuple[str, ...],
+    *,
+    min_total_size_bytes: int,
+) -> ModelIntegritySpec:
+    org, model = model_id.split("/", 1)
+    return ModelIntegritySpec(
+        description=description,
+        path=Path.home() / ".cache" / "huggingface" / "hub" / f"models--{org}--{model}",
+        required_patterns=required_patterns,
+        min_total_size_bytes=min_total_size_bytes,
+    )
 def print_model_statistics(result: dict[str, Any], use_logger: bool = True) -> None:
     """打印模型加载统计信息 - KISS版本：只显示已加载的模型"""
     output = logger.info if use_logger else print
@@ -102,7 +205,186 @@ def _resolve_models_to_load(all_available_models: list[str], config: str) -> lis
     logger.info(f"📝 ENABLED_MODELS={config}，加载指定模型: {result}")
     return result
 
+def _build_required_model_integrity_specs() -> list[ModelIntegritySpec]:
+    from ..core.config import settings
+    from ..services.asr.manager import get_model_manager
+    manager = get_model_manager()
+    model_ids = [item["id"] for item in manager.list_models()]
+    enabled_models = _resolve_models_to_load(model_ids, settings.ENABLED_MODELS)
+    specs: list[ModelIntegritySpec] = []
 
+    specs.append(
+        _build_modelscope_spec(
+            settings.VAD_MODEL,
+            "VAD",
+            ("configuration.json", "config.yaml", "model.pb"),
+            min_total_size_bytes=1_000_000,
+        )
+    )
+    specs.append(
+        _build_modelscope_spec(
+            "iic/speech_campplus_speaker-diarization_common",
+            "CAM++ Diarization",
+            (
+                "configuration.json",
+                "config.yaml",
+                "onnx/asd.onnx",
+                "onnx/face_recog_ir101.onnx",
+                "onnx/fqa.onnx",
+                "onnx/version-RFB-320.onnx",
+            ),
+            min_total_size_bytes=50_000_000,
+        )
+    )
+    specs.append(
+        _build_modelscope_spec(
+            "damo/speech_campplus_sv_zh-cn_16k-common",
+            "CAM++ Speaker Verification",
+            ("configuration.json", "config.yaml", "campplus_cn_common.bin"),
+            min_total_size_bytes=10_000_000,
+        )
+    )
+    specs.append(
+        _build_modelscope_spec(
+            "damo/speech_campplus-transformer_scl_zh-cn_16k-common",
+            "CAM++ Transformer",
+            ("configuration.json", "campplus_cn_encoder.pt", "transformer_backend.pt"),
+            min_total_size_bytes=10_000_000,
+        )
+    )
+
+    if "paraformer-large" in enabled_models:
+        model_config = manager.get_model_config("paraformer-large")
+        if model_config.offline_model_path:
+            specs.append(
+                _build_modelscope_spec(
+                    model_config.offline_model_path,
+                    "Paraformer Large Offline",
+                    (
+                        "configuration.json",
+                        "config.yaml",
+                        "model.pt",
+                        "tokens.json",
+                        "seg_dict",
+                    ),
+                    min_total_size_bytes=100_000_000,
+                )
+            )
+        if model_config.realtime_model_path:
+            specs.append(
+                _build_modelscope_spec(
+                    model_config.realtime_model_path,
+                    "Paraformer Large Realtime",
+                    (
+                        "configuration.json",
+                        "config.yaml",
+                        "model.pt",
+                        "tokens.json",
+                        "seg_dict",
+                    ),
+                    min_total_size_bytes=100_000_000,
+                )
+            )
+        specs.append(
+            _build_modelscope_spec(
+                settings.PUNC_MODEL,
+                "Punctuation Offline",
+                ("configuration.json", "config.yaml", "model.pt", "tokens.json"),
+                min_total_size_bytes=50_000_000,
+            )
+        )
+        if settings.ASR_ENABLE_REALTIME_PUNC:
+            specs.append(
+                _build_modelscope_spec(
+                    settings.PUNC_REALTIME_MODEL,
+                    "Punctuation Realtime",
+                    ("configuration.json", "config.yaml", "model.pt", "tokens.json"),
+                    min_total_size_bytes=50_000_000,
+                )
+            )
+        if settings.ASR_ENABLE_LM and settings.LM_MODEL:
+            specs.append(
+                _build_modelscope_spec(
+                    settings.LM_MODEL,
+                    "N-gram LM",
+                    ("configuration.json", "config.yaml", "TLG.fst"),
+                    min_total_size_bytes=100_000_000,
+                )
+            )
+
+    for model_id in enabled_models:
+        if not model_id.startswith("qwen3-asr-"):
+            continue
+        model_config = manager.get_model_config(model_id)
+        offline_model = model_config.offline_model_path
+        if offline_model:
+            specs.append(
+                _build_huggingface_spec(
+                    offline_model,
+                    f"{model_config.name} Offline",
+                    ("snapshots/*/config.json", "snapshots/*/model.safetensors"),
+                    min_total_size_bytes=500_000_000,
+                )
+            )
+        forced_aligner = str(model_config.extra_kwargs.get("forced_aligner_path") or "").strip()
+        if forced_aligner:
+            specs.append(
+                _build_huggingface_spec(
+                    forced_aligner,
+                    f"{model_config.name} Forced Aligner",
+                    ("snapshots/*/config.json", "snapshots/*/model.safetensors"),
+                    min_total_size_bytes=500_000_000,
+                )
+            )
+
+    return specs
+
+
+def verify_required_models_integrity(use_logger: bool = True) -> dict[str, Any]:
+    output = logger.info if use_logger else print
+    specs = _build_required_model_integrity_specs()
+    total = len(specs)
+    results: list[dict[str, Any]] = []
+    invalid: list[dict[str, Any]] = []
+
+    output("=" * 60)
+    output(f"🔍 开始检查运行时模型完整性，共 {total} 个")
+    output("=" * 60)
+
+    for index, spec in enumerate(specs, start=1):
+        output(f"[{index}/{total}] 检查 {spec.description}")
+        result = _check_model_integrity_spec(spec)
+        results.append(result)
+        if result["ok"]:
+            output(
+                f"  ✅ OK  size={_format_bytes(result['total_size_bytes'])} "
+                f"path={result['path']}"
+            )
+            continue
+
+        invalid.append(result)
+        if result["reason"] == "directory_missing":
+            output(f"  ❌ FAIL directory_missing path={result['path']}")
+        elif result["reason"] == "required_files_missing":
+            output(
+                f"  ❌ FAIL missing={', '.join(result['missing_patterns'])} "
+                f"size={_format_bytes(result['total_size_bytes'])} path={result['path']}"
+            )
+        else:
+            output(
+                f"  ❌ FAIL size_too_small size={_format_bytes(result['total_size_bytes'])} "
+                f"path={result['path']}"
+            )
+
+    output("=" * 60)
+    output(f"模型完整性检查完成: total={total} ok={total - len(invalid)} failed={len(invalid)}")
+    output("=" * 60)
+
+    return {
+        "total": total,
+        "results": results,
+        "invalid_models": invalid,
+    }
 def preload_models() -> dict[str, Any]:
     """
     预加载所有需要的模型（根据 ENABLE_* 配置过滤）

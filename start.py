@@ -60,7 +60,19 @@ def main() -> None:
         check_and_download_models()
 
         try:
-            from app.utils.model_loader import preload_models, print_model_statistics
+            from app.utils.model_loader import (
+                preload_models,
+                print_model_statistics,
+                verify_required_models_integrity,
+            )
+
+            integrity_result = verify_required_models_integrity(use_logger=False)
+            invalid_models = integrity_result["invalid_models"]
+            if invalid_models:
+                print("❌ 检测到残缺模型，已阻止服务启动。")
+                print("请修复模型缓存后重试。")
+                sys.exit(1)
+
             result = preload_models()
             print_model_statistics(result, use_logger=False)
         except Exception as e:
