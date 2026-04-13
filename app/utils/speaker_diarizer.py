@@ -68,6 +68,8 @@ def _resolve_modelscope_device() -> str:
 
 def _move_pipeline_model_to_device(pipeline_instance: Any, modelscope_device: str) -> None:
     """将 pipeline 的底层模型迁移到目标设备。"""
+    if hasattr(pipeline_instance, "device_name"):
+        pipeline_instance.device_name = modelscope_device
     model = getattr(pipeline_instance, "model", None)
     if model is not None and hasattr(model, "to"):
         pipeline_instance.model = model.to(modelscope_device)
@@ -86,6 +88,7 @@ def _create_modelscope_pipeline(
     pipeline_kwargs: dict[str, Any] = {
         "task": task,
         "model": model,
+        "device": modelscope_device,
     }
     if model_revision is not None:
         pipeline_kwargs["model_revision"] = model_revision
