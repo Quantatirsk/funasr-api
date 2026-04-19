@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -104,6 +105,26 @@ def _split_alignment_units(text: str) -> list[str]:
     return re.findall(r"\S+", text)
 
 
+def _resolve_forced_aligner_gpu_memory_utilization(primary_utilization: float) -> float:
+    override = (os.getenv("QWEN_FORCE_ALIGNER_GPU_MEMORY_UTILIZATION") or "").strip()
+    if override:
+        try:
+            value = float(override)
+            if 0.0 < value <= 1.0:
+                return value
+        except ValueError:
+            logger.warning(
+                "Invalid QWEN_FORCE_ALIGNER_GPU_MEMORY_UTILIZATION=%s, ignoring override",
+                override,
+            )
+
+    # The forced aligner runs as a second vLLM engine on the same GPU.
+    # Using vLLM's default 0.9 often over-reserves memory and blocks startup.
+    # A conservative fallback is still better than the default when runtime
+    # free-memory probing is unavailable.
+    return round(min(0.70, max(0.20, 0.92 - primary_utilization)), 2)
+
+
 @dataclass
 class _GeneratedTranscript:
     text: str
@@ -166,21 +187,56 @@ class Qwen3VLLMBackend:
             max_tokens=max_new_tokens,
         )
         self._max_inference_batch_size = max_inference_batch_size
+        self._gpu_memory_utilization = gpu_memory_utilization
         self._forced_aligner_path = forced_aligner_path
         self._forced_aligner: Any | None = None
         self._timestamp_token_id: int | None = None
         self._timestamp_segment_time: float | None = None
+
+    def _get_forced_aligner_gpu_memory_utilization(self) -> float:
+        configured = _resolve_forced_aligner_gpu_memory_utilization(self._gpu_memory_utilization)
+
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                free_bytes, total_bytes = torch.cuda.mem_get_info()
+                free_ratio = float(free_bytes) / float(total_bytes)
+                dynamic = max(0.08, min(0.75, free_ratio - 0.03))
+                selected = round(min(configured, dynamic), 2)
+                logger.info(
+                    "Resolved forced aligner gpu_memory_utilization=%s (free_ratio=%.2f configured=%s)",
+                    selected,
+                    free_ratio,
+                    configured,
+                )
+                return selected
+        except Exception as exc:
+            logger.debug("Failed to probe CUDA free memory for forced aligner sizing: %s", exc)
+
+        logger.info(
+            "Resolved forced aligner gpu_memory_utilization=%s (fallback from primary=%s)",
+            configured,
+            self._gpu_memory_utilization,
+        )
+        return configured
 
     def _get_forced_aligner(self) -> Any:
         if not self._forced_aligner_path:
             raise RuntimeError("word_timestamps requires a configured forced aligner model")
 
         if self._forced_aligner is None:
-            logger.info("Loading Qwen3 forced aligner via official vLLM: %s", self._forced_aligner_path)
+            forced_aligner_gpu_memory_utilization = self._get_forced_aligner_gpu_memory_utilization()
+            logger.info(
+                "Loading Qwen3 forced aligner via official vLLM: %s (gpu_memory_utilization=%s)",
+                self._forced_aligner_path,
+                forced_aligner_gpu_memory_utilization,
+            )
             self._forced_aligner = self._llm_cls(
                 model=self._forced_aligner_path,
                 runner="pooling",
                 enforce_eager=True,
+                gpu_memory_utilization=forced_aligner_gpu_memory_utilization,
                 hf_overrides={
                     "architectures": ["Qwen3ASRForcedAlignerForTokenClassification"],
                 },

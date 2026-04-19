@@ -16,7 +16,7 @@
 
 新增文件：
 
-- [app/services/asr/qwen3_vllm.py](/Users/quant/Documents/funasr-api/app/services/asr/qwen3_vllm.py)
+- [app/services/asr/qwen3_vllm.py](../../app/services/asr/qwen3_vllm.py)
 
 职责：
 
@@ -38,7 +38,7 @@
 
 文件：
 
-- [app/services/asr/qwen3_engine.py](/Users/quant/Documents/funasr-api/app/services/asr/qwen3_engine.py)
+- [app/services/asr/qwen3_engine.py](../../app/services/asr/qwen3_engine.py)
 
 当前后端语义：
 
@@ -52,7 +52,7 @@
 
 文件：
 
-- [app/services/asr/runtime/router.py](/Users/quant/Documents/funasr-api/app/services/asr/runtime/router.py)
+- [app/services/asr/runtime/router.py](../../app/services/asr/runtime/router.py)
 
 当前行为：
 
@@ -74,11 +74,11 @@
 
 文件：
 
-- [pyproject.toml](/Users/quant/Documents/funasr-api/pyproject.toml)
-- [README.md](/Users/quant/Documents/funasr-api/README.md)
-- [docs/README_zh.md](/Users/quant/Documents/funasr-api/docs/README_zh.md)
-- [docs/deployment.md](/Users/quant/Documents/funasr-api/docs/deployment.md)
-- [app/api/v1/asr.py](/Users/quant/Documents/funasr-api/app/api/v1/asr.py)
+- [pyproject.toml](../../pyproject.toml)
+- [README.md](../../README.md)
+- [docs/README_zh.md](../README_zh.md)
+- [docs/deployment.md](../deployment.md)
+- [app/api/v1/asr.py](../../app/api/v1/asr.py)
 
 当前说明已经更新为：
 
@@ -87,7 +87,7 @@
 
 ## 本轮已完成的静态验证
 
-本轮已实际执行：
+2026-04-19 在当前工作区复验：
 
 ```bash
 python -m compileall app
@@ -97,7 +97,78 @@ uvx pyright
 结果：
 
 - `compileall` 通过
-- `pyright` 通过
+- `uvx pyright` 未通过
+
+当前失败原因不是这次 CUDA vLLM 迁移代码本身出现语法错误，而是当前仓库环境无法复现文档原先的类型检查前提：
+
+- `pyrightconfig.json` 仍指向不存在的虚拟环境 `.venv-fastapi-test`
+- 当前工作区只有 `.venv`
+- 当前 `.venv` 也未安装完整类型检查依赖（例如 `torch`）
+
+因此，“`pyright` 已通过” 这条结论目前不能作为可复现验证结果保留；若要补验，需要先修正 `pyrightconfig.json` 或补齐对应虚拟环境。
+
+补充：
+
+- 当前工作区已将 `pyrightconfig.json` 修正为指向 `.venv`
+- 在补齐当前 `.venv` 的 CUDA / vLLM 依赖后，`uvx pyright` 已复验通过
+
+## 本轮新增的真实 CUDA 验证
+
+2026-04-20 在当前 NVIDIA 机器上补做了实际联调，环境特征：
+
+- GPU0: `NVIDIA GeForce RTX 4090`，24GB 显存
+- driver / CUDA: `580.76.05 / 13.0`
+- Python: `3.12`
+- `torch`: `2.11.0+cu130`
+- `vllm`: `0.19.2rc1.dev11+g45232a454`
+
+本轮已实际验证通过：
+
+- `/stream/v1/asr/health`
+- `/stream/v1/asr?enable_speaker_diarization=false`
+- `/stream/v1/asr?enable_speaker_diarization=false&word_timestamps=true`
+
+实际验证结果：
+
+- 健康检查返回 `healthy`
+- `qwen3-asr-0.6b` 已成功在 CUDA official vLLM 路径加载
+- forced aligner 已成功在同卡作为第二个 official vLLM engine 加载
+- `word_timestamps=true` 已返回词级时间戳
+
+本轮使用的是本地合成英文语音样本，识别文本大意正确，但专有词存在偏差，例如：
+
+- `Qwen three ASR` 被识别为 `QWERTY and three Acer`
+
+这说明：
+
+- CUDA 离线路径已真实跑通
+- CUDA forced align 路径已真实跑通
+- 但识别准确率仍需用正式英文/中文样本继续评估
+
+本轮同时确认了两个实际问题：
+
+### 1. forced aligner 默认显存策略会导致启动失败
+
+原始问题：
+
+- forced aligner 第二个 vLLM engine 默认吃到 `gpu_memory_utilization=0.9`
+- 在同卡已有主 ASR engine 时，会直接因为显存预算错误而失败
+
+当前已修：
+
+- [app/services/asr/qwen3_vllm.py](../../app/services/asr/qwen3_vllm.py)
+
+当前策略：
+
+- 允许 `QWEN_FORCE_ALIGNER_GPU_MEMORY_UTILIZATION` 环境变量显式覆盖
+- 默认按主 engine 配置与当前空闲显存动态计算 forced aligner 的 `gpu_memory_utilization`
+
+### 2. 当前 GPU 安装链路对 Python 环境有额外要求
+
+本轮实际联调时还处理了两个环境问题：
+
+- `uv sync --group gpu` 在当前项目配置下会把 Linux `torch` 解析到 CPU wheel，需要手动切到 CUDA wheel
+- `numpy` 升到 `2.4.x` 后会导致 `numba` / `librosa` / CAM++ 音频链路失败，实际需要 `numpy<=2.2.x`
 
 ## 当前仍未完成的验证
 
@@ -115,24 +186,31 @@ uvx pyright
 
 待确认：
 
-- `qwen3-asr-0.6b`
 - `qwen3-asr-1.7b`
 
-至少验证：
+已验证：
 
+- `qwen3-asr-0.6b`
 - `/stream/v1/asr`
+
+仍待验证：
+
 - `/v1/audio/transcriptions`
+- `qwen3-asr-1.7b`
 
 ### 3. CUDA forced align 可用性
 
 待确认：
 
-- `word_timestamps=true`
 - `Qwen/Qwen3-ForcedAligner-0.6B`
 
-重点验证：
+已验证：
 
-- 英文音频
+- `word_timestamps=true`
+- 英文音频样本可返回词级时间戳
+
+仍待重点验证：
+
 - 中文音频
 - 字词级时间戳是否落在合理范围
 
@@ -140,9 +218,9 @@ uvx pyright
 
 当前 websocket 仍然依赖：
 
-- [app/api/v1/websocket_asr.py](/Users/quant/Documents/funasr-api/app/api/v1/websocket_asr.py)
-- [app/services/asr/qwen3_engine.py](/Users/quant/Documents/funasr-api/app/services/asr/qwen3_engine.py)
-- [app/services/asr/qwen3_vllm.py](/Users/quant/Documents/funasr-api/app/services/asr/qwen3_vllm.py)
+- [app/api/v1/websocket_asr.py](../../app/api/v1/websocket_asr.py)
+- [app/services/asr/qwen3_engine.py](../../app/services/asr/qwen3_engine.py)
+- [app/services/asr/qwen3_vllm.py](../../app/services/asr/qwen3_vllm.py)
 
 待确认：
 
@@ -267,7 +345,7 @@ DEVICE=cuda:0 uv run python start.py
 
 如果出现差异，优先修：
 
-- [app/services/asr/qwen3_vllm.py](/Users/quant/Documents/funasr-api/app/services/asr/qwen3_vllm.py)
+- [app/services/asr/qwen3_vllm.py](../../app/services/asr/qwen3_vllm.py)
 
 ### 3. shared runtime 并发上限不一定等于 8
 
@@ -292,9 +370,10 @@ DEVICE=cuda:0 uv run python start.py
 
 当前状态可以理解为：
 
-- **代码改造已完成到“可联调”阶段**
-- **静态检查已通过**
-- **真实 NVIDIA 运行验证尚未完成**
+- **代码改造已完成，并已补过一轮真实 CUDA 联调**
+- **`compileall` / `pyright` 当前工作区均已复验通过**
+- **CUDA 离线 REST 与 forced align 已验证**
+- **但 websocket realtime、1.7B、中文样本与 benchmark 仍未完成**
 
 因此这份迁移目前应视为：
 

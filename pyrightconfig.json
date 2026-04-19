@@ -10,5 +10,5 @@
     "video"
   ],
   "venvPath": ".",
-  "venv": ".venv-fastapi-test"
+  "venv": ".venv"
 }
