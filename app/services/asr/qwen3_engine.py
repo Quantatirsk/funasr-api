@@ -240,7 +240,23 @@ class Qwen3ASREngine(BaseASREngine):
 
         return self._rust_batch_runtimes[:worker_count]
 
-    def _rust_transcribe_segment(
+    def _get_rust_stage_concurrency(self, configured: int, segment_count: int) -> int:
+        target = configured if configured > 0 else settings.QWEN_RUST_CPU_WORKERS
+        return max(1, min(target, segment_count))
+
+    def _get_rust_asr_concurrency(self, segment_count: int) -> int:
+        return self._get_rust_stage_concurrency(
+            settings.QWEN_RUST_ASR_CONCURRENCY,
+            segment_count,
+        )
+
+    def _get_rust_align_concurrency(self, segment_count: int) -> int:
+        return self._get_rust_stage_concurrency(
+            settings.QWEN_RUST_ALIGN_CONCURRENCY,
+            segment_count,
+        )
+
+    def _rust_transcribe_text_segment(
         self,
         runtime: QwenASRRustRuntime,
         seg: Any,
@@ -248,36 +264,101 @@ class Qwen3ASREngine(BaseASREngine):
         enable_punctuation: bool,
         enable_itn: bool,
         sample_rate: int,
-        word_timestamps: bool,
-    ) -> ASRSegmentResult:
-        if word_timestamps:
-            text = runtime.transcribe_file(seg.temp_file)
-            word_tokens = [
-                WordToken(
-                    text=str(item["text"]),
-                    start_time=round(float(item["start_ms"]) / 1000.0, 3),
-                    end_time=round(float(item["end_ms"]) / 1000.0, 3),
-                )
-                for item in runtime.align_transcript(
-                    audio_path=seg.temp_file,
-                    text=text,
-                )
-            ]
-            return ASRSegmentResult(
-                text=text,
-                start_time=seg.start_sec,
-                end_time=seg.end_sec,
-                speaker_id=getattr(seg, "speaker_id", None),
-                word_tokens=word_tokens or None,
-            )
+    ) -> str:
+        _ = (hotwords, enable_punctuation, enable_itn, sample_rate)
+        return runtime.transcribe_file(seg.temp_file) or ""
 
-        text = runtime.transcribe_file(seg.temp_file)
-        return ASRSegmentResult(
-            text=text or "",
-            start_time=seg.start_sec,
-            end_time=seg.end_sec,
-            speaker_id=getattr(seg, "speaker_id", None),
-        )
+    def _rust_align_word_tokens(
+        self,
+        runtime: QwenASRRustRuntime,
+        seg: Any,
+        text: str,
+        language: Optional[str] = None,
+    ) -> list[WordToken]:
+        return [
+            WordToken(
+                text=str(item["text"]),
+                start_time=round(float(item["start_ms"]) / 1000.0, 3),
+                end_time=round(float(item["end_ms"]) / 1000.0, 3),
+            )
+            for item in runtime.align_transcript(
+                audio_path=seg.temp_file,
+                text=text,
+                language=language,
+            )
+        ]
+
+    def _run_rust_asr_stage(
+        self,
+        valid_segments: List[tuple[int, Any]],
+        hotwords: str,
+        enable_punctuation: bool,
+        enable_itn: bool,
+        sample_rate: int,
+    ) -> dict[int, str]:
+        if not valid_segments:
+            return {}
+
+        worker_count = self._get_rust_asr_concurrency(len(valid_segments))
+        runtimes = self._get_rust_batch_runtimes(worker_count)
+        output: dict[int, str] = {}
+
+        for batch_start in range(0, len(valid_segments), worker_count):
+            chunk = valid_segments[batch_start:batch_start + worker_count]
+            chunk_runtimes = runtimes[:len(chunk)]
+            with ThreadPoolExecutor(max_workers=len(chunk)) as executor:
+                futures = [
+                    executor.submit(
+                        self._rust_transcribe_text_segment,
+                        runtime,
+                        seg,
+                        hotwords,
+                        enable_punctuation,
+                        enable_itn,
+                        sample_rate,
+                    )
+                    for runtime, (_idx, seg) in zip(chunk_runtimes, chunk)
+                ]
+                for (idx, _seg), future in zip(chunk, futures):
+                    output[idx] = future.result()
+
+        return output
+
+    def _run_rust_align_stage(
+        self,
+        valid_segments: List[tuple[int, Any]],
+        texts: dict[int, str],
+        language: Optional[str] = None,
+    ) -> dict[int, list[WordToken]]:
+        if not valid_segments:
+            return {}
+
+        worker_count = self._get_rust_align_concurrency(len(valid_segments))
+        runtimes = self._get_rust_batch_runtimes(worker_count)
+        output: dict[int, list[WordToken]] = {}
+
+        align_inputs = [(idx, seg, texts.get(idx, "")) for idx, seg in valid_segments if texts.get(idx, "").strip()]
+        if not align_inputs:
+            return output
+
+        for batch_start in range(0, len(align_inputs), worker_count):
+            chunk = align_inputs[batch_start:batch_start + worker_count]
+            chunk_runtimes = runtimes[:len(chunk)]
+            with ThreadPoolExecutor(max_workers=len(chunk)) as executor:
+                futures = [
+                    executor.submit(
+                        self._rust_align_word_tokens,
+                        runtime,
+                        seg,
+                        text,
+                        language,
+                    )
+                    for runtime, (_idx, seg, text) in zip(chunk_runtimes, chunk)
+                ]
+                for (idx, _seg, _text), future in zip(chunk, futures):
+                    output[idx] = future.result()
+
+        return output
 
     def _warmup_forced_aligner(self) -> None:
         if not self._forced_aligner_path:
@@ -439,29 +520,30 @@ class Qwen3ASREngine(BaseASREngine):
             return output
 
         if self._backend == "rust":
-            worker_count = max(1, min(settings.ASR_BATCH_SIZE, len(valid)))
-            runtimes = self._get_rust_batch_runtimes(worker_count)
+            texts = self._run_rust_asr_stage(
+                valid_segments=valid,
+                hotwords=hotwords,
+                enable_punctuation=enable_punctuation,
+                enable_itn=enable_itn,
+                sample_rate=sample_rate,
+            )
 
-            for batch_start in range(0, len(valid), worker_count):
-                chunk = valid[batch_start:batch_start + worker_count]
-                chunk_runtimes = runtimes[:len(chunk)]
-                with ThreadPoolExecutor(max_workers=len(chunk)) as executor:
-                    futures = [
-                        executor.submit(
-                            self._rust_transcribe_segment,
-                            runtime,
-                            seg,
-                            hotwords,
-                            enable_punctuation,
-                            enable_itn,
-                            sample_rate,
-                            word_timestamps,
-                        )
-                        for runtime, (_idx, seg) in zip(chunk_runtimes, chunk)
-                    ]
+            word_tokens_by_idx: dict[int, list[WordToken]] = {}
+            if word_timestamps:
+                word_tokens_by_idx = self._run_rust_align_stage(
+                    valid_segments=valid,
+                    texts=texts,
+                )
 
-                    for (idx, _seg), future in zip(chunk, futures):
-                        output[idx] = future.result()
+            for idx, seg in valid:
+                text = texts.get(idx, "")
+                output[idx] = ASRSegmentResult(
+                    text=text,
+                    start_time=seg.start_sec,
+                    end_time=seg.end_sec,
+                    speaker_id=getattr(seg, "speaker_id", None),
+                    word_tokens=word_tokens_by_idx.get(idx) or None,
+                )
             return output
 
         if self._backend == "vllm":

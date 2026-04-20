@@ -72,6 +72,8 @@ class Settings:
 
     # Runtime 并发配置（按 backend 独立控制）
     QWEN_RUST_CPU_WORKERS: int = 4
+    QWEN_RUST_ASR_CONCURRENCY: int = 0
+    QWEN_RUST_ALIGN_CONCURRENCY: int = 0
     FUNASR_WORKERS: int = 1
 
     def __init__(self):
@@ -136,6 +138,12 @@ class Settings:
 
         self.QWEN_RUST_CPU_WORKERS = int(
             os.getenv("QWEN_RUST_CPU_WORKERS", str(self.QWEN_RUST_CPU_WORKERS))
+        )
+        self.QWEN_RUST_ASR_CONCURRENCY = int(
+            os.getenv("QWEN_RUST_ASR_CONCURRENCY", str(self.QWEN_RUST_ASR_CONCURRENCY))
+        )
+        self.QWEN_RUST_ALIGN_CONCURRENCY = int(
+            os.getenv("QWEN_RUST_ALIGN_CONCURRENCY", str(self.QWEN_RUST_ALIGN_CONCURRENCY))
         )
         self.FUNASR_WORKERS = int(
             os.getenv("FUNASR_WORKERS", str(self.FUNASR_WORKERS))

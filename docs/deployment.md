@@ -224,6 +224,8 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 | `MAX_SEGMENT_SEC` | `30` | 音频分段最大时长（秒） |
 | `WS_MAX_BUFFER_SIZE` | `160000` | WebSocket 音频缓冲区大小（样本数） |
 | `QWEN_RUST_CPU_WORKERS` | `4` | CPU Rust backend worker 数；Rust ASR / forced align 默认 4 个 runtime |
+| `QWEN_RUST_ASR_CONCURRENCY` | `0` | Rust ASR 阶段批内并行度；`0` 表示跟随 `QWEN_RUST_CPU_WORKERS` |
+| `QWEN_RUST_ALIGN_CONCURRENCY` | `0` | Rust forced align 阶段批内并行度；`0` 表示跟随 `QWEN_RUST_CPU_WORKERS` |
 | `QWENASR_CPU_NUM_THREADS` | 自动 / 安全 `1` | 覆盖单个 Rust runtime 的 CPU 线程数 |
 | `QWENASR_LIBRARY_PATH` | 自动探测 | 覆盖 vendored Rust 动态库路径 |
 

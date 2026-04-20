@@ -28,6 +28,11 @@ python -m scripts.benchmark.run --test-type tts
 
 # 仅测试 ASR
 python -m scripts.benchmark.run --audio-file /path/to/audio.wav --test-type asr
+
+# Qwen Rust CPU worker 对比测试（固定 VAD 分段）
+uv run python -m scripts.benchmark.qwen_rust_sensitivity \
+  --audio-file /path/to/audio.wav \
+  --workers 4,cpu
 ```
 
 ## 命令行参数
@@ -42,6 +47,47 @@ python -m scripts.benchmark.run --audio-file /path/to/audio.wav --test-type asr
 | `--output` | ./benchmark_results | 报告输出目录 |
 | `--timeout` | 120 | 请求超时时间 (秒) |
 | `--voice` | 中文女 | TTS 测试音色 |
+
+## Qwen Rust CPU worker 对比测试
+
+用于对 vendored Rust backend 做固定 workload 的端到端对比：
+
+- 同一组 VAD 分段
+- Rust ASR
+- Rust forced align
+- 对比 `4 workers` 和 `CPU 数量 workers`
+
+示例：
+
+```bash
+# 默认对比 4 workers 和 CPU 数量 workers
+uv run python -m scripts.benchmark.qwen_rust_sensitivity \
+  --audio-file temp/podcast_demo_10min_16k.wav \
+  --json-out temp/qwen_rust_workers.json
+
+# 显式指定其他对比组
+uv run python -m scripts.benchmark.qwen_rust_sensitivity \
+  --audio-file temp/podcast_demo_10min_16k.wav \
+  --workers 4,12,16,cpu \
+  --json-out temp/qwen_rust_workers.json
+```
+
+说明：
+
+- `cpu` 会解析为 `os.cpu_count()`
+- 每跑完一组 workers，脚本都会：
+  - 输出一条进度日志
+  - 增量写入 `--json-out`
+- 如果传了 `--json-out`，脚本还会自动生成同名 `.md` 中文对比报告
+- 也可以显式指定 Markdown 路径：
+
+```bash
+uv run python -m scripts.benchmark.qwen_rust_sensitivity \
+  --audio-file temp/podcast_demo_10min_16k.wav \
+  --workers 4,cpu \
+  --json-out temp/qwen_rust_workers.json \
+  --markdown-out temp/qwen_rust_workers_report.md
+```
 
 ### TTS 流式模拟配置 (config.py)
 
