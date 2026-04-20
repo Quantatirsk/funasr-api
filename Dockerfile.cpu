@@ -36,7 +36,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Build QwenASR Rust shared library for CPU Qwen3-ASR inference
-RUN cargo build --release -p qwen-asr --features macos-ffi --manifest-path /tmp/qwenasr/Cargo.toml \
+RUN cargo build --release -p qwen-asr --features ffi --manifest-path /tmp/qwenasr/Cargo.toml \
     && mkdir -p /opt/qwenasr/lib \
     && cp /tmp/qwenasr/target/release/libqwen_asr.so /opt/qwenasr/lib/libqwen_asr.so
 

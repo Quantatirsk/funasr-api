@@ -7,7 +7,14 @@ pub fn bf16_to_f32(bf16: u16) -> f32 {
 
 /// # Safety
 /// w_bf16 must point to at least out_dim * in_dim valid bf16 values.
-pub unsafe fn bf16_matvec_fused(y: &mut [f32], x: &[f32], w_bf16: *const u16, bias: Option<&[f32]>, in_dim: usize, out_dim: usize) {
+pub unsafe fn bf16_matvec_fused(
+    y: &mut [f32],
+    x: &[f32],
+    w_bf16: *const u16,
+    bias: Option<&[f32]>,
+    in_dim: usize,
+    out_dim: usize,
+) {
     for o in 0..out_dim {
         let w_row = unsafe { std::slice::from_raw_parts(w_bf16.add(o * in_dim), in_dim) };
         let mut sum = bias.map_or(0.0f32, |b| b[o]);
@@ -20,7 +27,13 @@ pub unsafe fn bf16_matvec_fused(y: &mut [f32], x: &[f32], w_bf16: *const u16, bi
 
 /// # Safety
 /// w_bf16 must point to at least end * in_dim valid bf16 values.
-pub unsafe fn argmax_bf16_range(x: &[f32], w_bf16: *const u16, in_dim: usize, start: usize, end: usize) -> (usize, f32) {
+pub unsafe fn argmax_bf16_range(
+    x: &[f32],
+    w_bf16: *const u16,
+    in_dim: usize,
+    start: usize,
+    end: usize,
+) -> (usize, f32) {
     let mut best = start;
     let mut best_val = -1e30f32;
 

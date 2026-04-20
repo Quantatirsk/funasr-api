@@ -53,20 +53,20 @@
 //! The remaining modules (`encoder`, `decoder`, `kernels`, `safetensors`) are
 //! implementation details and not intended for direct use.
 
-pub mod config;
-pub mod safetensors;
-pub mod audio;
-pub mod tokenizer;
-pub mod kernels;
-pub mod encoder;
-pub mod decoder;
-pub mod context;
-pub mod transcribe;
 pub mod align;
-#[cfg(any(feature = "ios", feature = "android", feature = "macos-ffi"))]
+pub mod audio;
+#[cfg(any(feature = "ios", feature = "android", feature = "ffi"))]
 pub mod c_api;
+pub mod config;
+pub mod context;
+pub mod decoder;
+pub mod encoder;
 #[cfg(feature = "android")]
 pub mod jni_api;
+pub mod kernels;
+pub mod safetensors;
+pub mod tokenizer;
+pub mod transcribe;
 
 /// Returns a list of compile-time optimization flags enabled for this build.
 pub fn optimization_flags() -> Vec<&'static str> {
