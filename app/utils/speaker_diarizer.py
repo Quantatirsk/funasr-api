@@ -95,7 +95,7 @@ def _create_modelscope_pipeline(
 def _enable_batched_sv(
     pipeline_instance: Any,
     modelscope_device: str,
-    max_batch_size: int = 16,
+    max_batch_size: int = 32,
 ) -> Any:
     """
     对说话人分离 pipeline 启用 batched SV 推理。
