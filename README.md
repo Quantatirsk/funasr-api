@@ -22,6 +22,21 @@ Speech recognition API service powered by [FunASR](https://github.com/alibaba-da
 
 [![Demo](./demo/demo.png)](https://media.cdn.vect.one/qwenasr_client_demo.mp4)
 
+## Release 1.0
+
+> `v1.0.0` is a large breaking refactor relative to the current `main` branch.
+> If you are upgrading from `main`, read the release notes before reusing old deployment assumptions.
+>
+> Key breaking changes:
+> - Python dependency management is now `uv`-based (`pyproject.toml` + `uv.lock`); `requirements*.txt` are gone
+> - Runtime stack changed to `CUDA -> official vLLM`, `CPU/macOS -> vendored QwenASR Rust`
+> - `MLX` / Apple Silicon GPU path has been removed; `mps` is normalized to `cpu`
+> - macOS / Apple Silicon now defaults to `qwen3-asr-0.6b` unless the caller explicitly selects `qwen3-asr-1.7b`
+> - Offline `model` / `model_id` are now compatibility-only parameters and no longer switch the active offline model
+> - `ENABLED_MODELS` has been removed
+>
+> See [Release 1.0 notes](./docs/RELEASE_1.0.md) and [runtime_instruction.md](./docs/runtime_instruction.md).
+
 ## Features
 
 - **Hybrid Runtime Stack** - Uses auto-selected Qwen3-ASR for offline inference and Paraformer realtime for websocket streaming

@@ -20,6 +20,21 @@
 
 [![演示](../demo/demo.png)](https://media.cdn.vect.one/qwenasr_client_demo.mp4)
 
+## Release 1.0
+
+> `v1.0.0` 相对于当前 `main` 分支是一轮大规模 breaking refactor。
+> 如果你是从 `main` 升级过来，请先阅读 release 说明，再决定是否沿用旧的部署与运行时假设。
+>
+> 关键 breaking changes：
+> - Python 依赖管理已经切到 `uv`（`pyproject.toml` + `uv.lock`），`requirements*.txt` 已移除
+> - 运行时栈改成 `CUDA -> official vLLM`、`CPU/macOS -> vendored QwenASR Rust`
+> - `MLX` / Apple Silicon GPU 路径已移除，`mps` 会归一化到 `cpu`
+> - macOS / Apple Silicon 现在默认总是 `qwen3-asr-0.6b`，除非调用方显式指定 `qwen3-asr-1.7b`
+> - 离线路径中的 `model` / `model_id` 现在仅为兼容参数，不再真正切换激活模型
+> - `ENABLED_MODELS` 已移除
+>
+> 请结合 [Release 1.0 说明](./RELEASE_1.0.md) 和 [runtime_instruction.md](./runtime_instruction.md) 一起阅读。
+
 ## 主要特性
 
 - **混合运行时栈** - 离线推理由自动选择的 Qwen3-ASR 提供，WebSocket 流式由 Paraformer realtime 能力提供
