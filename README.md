@@ -88,6 +88,7 @@ docker run -d --name funasr-api \
 > **Note**: CPU images now support `qwen3-asr-0.6b` via the bundled QwenASR Rust backend.
 > On CUDA vLLM and CPU Rust, `word_timestamps=true` now triggers the forced aligner automatically.
 > On macOS / Apple Silicon, Qwen3-ASR now runs through the Rust CPU backend.
+> For the current runtime/device truth table, see [runtime_instruction.md](./docs/runtime_instruction.md).
 
 **Offline Deployment**: Use the helper script to prepare the current runtime model package, then copy to the offline machine:
 
@@ -290,7 +291,7 @@ Disable speaker diarization:
 Automatic long audio segmentation:
 
 1. **VAD Voice Detection** - Detect voice boundaries, filter silence
-2. **Greedy Merge** - Accumulate voice segments, ensure each segment does not exceed `MAX_SEGMENT_SEC` (default 90s)
+2. **Greedy Merge** - Accumulate voice segments, ensure each segment does not exceed `MAX_SEGMENT_SEC` (default 30s)
 3. **Silence Split** - Force split when silence between voice segments exceeds 3 seconds
 4. **Batch Inference** - Multi-segment parallel processing, 2-3x performance improvement in GPU mode
 
@@ -330,7 +331,8 @@ Automatic long audio segmentation:
 **Runtime selection:**
 - **VRAM >= 32GB**: Select `qwen3-asr-1.7b`
 - **VRAM < 32GB**: Select `qwen3-asr-0.6b`
-- **No CUDA (including macOS / Apple Silicon)**: Select the vendored Rust-backed `qwen3-asr-0.6b`
+- **No CUDA**: Select the vendored Rust-backed `qwen3-asr-0.6b`
+- **macOS / Apple Silicon**: Always default to `qwen3-asr-0.6b`, regardless of memory size, unless a caller explicitly selects `qwen3-asr-1.7b`
 - `paraformer-large` realtime capability is always prepared for websocket streaming
 
 ## Environment Variables
@@ -342,7 +344,7 @@ Recommended public settings:
 | `API_KEY` | - | API authentication key (optional, unauthenticated if not set) |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG/INFO/WARNING/ERROR) |
 | `MAX_AUDIO_SIZE` | `2048` | Max audio file size (MB, supports units like 2GB) |
-| `ASR_BATCH_SIZE` | `4` | ASR batch size (GPU: 4, CPU: 2) |
+| `ASR_BATCH_SIZE` | `4` | ASR batch size for long-audio segment processing |
 | `MAX_SEGMENT_SEC` | `30` | Max audio segment duration (seconds) |
 | `ASR_ENABLE_NEARFIELD_FILTER` | `true` | Enable far-field sound filtering |
 

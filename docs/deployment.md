@@ -80,6 +80,7 @@ docker run -d --name funasr-api \
 **注意：** CPU 版本不使用 GPU/vLLM 路径。
 当前 CPU 镜像已集成 QwenASR Rust backend，会自动选择 `qwen3-asr-0.6b`。
 CUDA vLLM 与 CPU Rust 路径下，`word_timestamps=true` 会自动调用 forced aligner 返回字词级时间戳。
+如果需要查看当前主线代码真实成立的运行时 / 设备行为，请优先参考 [runtime_instruction.md](./runtime_instruction.md)。
 设计背景与实现思路可参考：
 
 - 当前 Qwen3 后端：`CUDA -> vLLM`、`CPU/macOS -> vendored QwenASR Rust`
@@ -173,7 +174,8 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 系统根据机器资源自动选择合适的 Qwen3-ASR 模型：
 - **显存 >= 32GB**: 自动加载 `qwen3-asr-1.7b`
 - **显存 < 32GB**: 自动加载 `qwen3-asr-0.6b`
-- **无 CUDA（含 macOS / Apple Silicon）**: 自动加载基于 vendored Rust 的 `qwen3-asr-0.6b`
+- **无 CUDA**: 自动加载基于 vendored Rust 的 `qwen3-asr-0.6b`
+- **macOS / Apple Silicon**: 无论内存大小多少，默认都加载 `qwen3-asr-0.6b`；只有调用方显式指定时才使用 `qwen3-asr-1.7b`
 
 `paraformer-large` realtime capability 会始终为 WebSocket 流式识别准备。
 
@@ -219,7 +221,7 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
-| `ASR_BATCH_SIZE` | `4` | ASR 批处理大小；CPU Rust 现已支持批内 4 路并行 |
+| `ASR_BATCH_SIZE` | `4` | 长音频分段后的 ASR 批处理大小 |
 | `INFERENCE_THREAD_POOL_SIZE` | 自动 | 推理线程池大小；默认按 CPU 核数自动设置 |
 | `MAX_SEGMENT_SEC` | `30` | 音频分段最大时长（秒） |
 | `WS_MAX_BUFFER_SIZE` | `160000` | WebSocket 音频缓冲区大小（样本数） |
