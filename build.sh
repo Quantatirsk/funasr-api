@@ -107,8 +107,8 @@ _label_bool() { [[ "$1" == "true" ]] && _msg yes || _msg no; }
 # Helpers
 # =============================================================================
 
-info() { echo "[INFO] $1"; }
-warn() { echo "[WARN] $1"; }
+info() { echo "[INFO] $1" >&2; }
+warn() { echo "[WARN] $1" >&2; }
 die()  { echo "[ERROR] $1" >&2; exit 1; }
 
 parse_arch() {
@@ -227,13 +227,13 @@ _ask_choice() {
     shift 2
   done
 
-  echo
-  echo "  ${prompt}:"
+  echo >&2
+  echo "  ${prompt}:" >&2
   local idx=1
   for label in "${labels[@]}"; do
     local mark=" "
     [[ "$idx" -eq "$default" ]] && mark="*"
-    echo "    ${mark}${idx}. ${label}"
+    echo "    ${mark}${idx}. ${label}" >&2
     ((idx++))
   done
 
