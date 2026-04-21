@@ -22,7 +22,7 @@ dependencies = [
   "httpx==0.28.1",
   "wetext==0.1.2",
   "python-dotenv==1.2.1",
-  "transformers>=4.40,<4.45",
+  "transformers>=4.45,<4.50",
   "huggingface_hub==0.34.0",
   "hdbscan==0.8.41",
   "loguru==0.7.2",
@@ -35,7 +35,6 @@ cpu = [
   "torchaudio==2.3.1 ; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 gpu = [
-  "vllm[audio] ; sys_platform == 'linux'",
 ]
 
 [build-system]
@@ -62,10 +61,6 @@ torch = [
 torchaudio = [
   { index = "pytorch-cpu", marker = "platform_system == 'Linux'" },
 ]
-vllm = [
-  { index = "vllm-nightly", marker = "platform_system == 'Linux'" },
-]
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"

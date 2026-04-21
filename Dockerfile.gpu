@@ -44,6 +44,10 @@ RUN uv venv /opt/venv && \
 # which replaces the base image's CUDA torch. Reinstall from cu126 to restore it.
 RUN uv pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu126
 
+# Install vllm separately to avoid dependency conflicts with transformers in pyproject.toml.
+# vllm 0.18.x stable requires transformers>=4.45, which is compatible with funasr/modelscope.
+RUN uv pip install "vllm[audio]==0.18.3"
+
 # Clean apt cache but keep build-essential and cuda-nvcc-12-6 for FlashInfer JIT compilation
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 

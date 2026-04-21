@@ -31,27 +31,32 @@ _resolve_lang() {
 }
 
 _msg() {
-  local k="$1" l
-  l="$(_resolve_lang)"
+  local k="$1" l; l="$(_resolve_lang)"
   if [[ "$l" == "zh" ]]; then
     case "$k" in
       title)     echo "FunASR-API Docker 构建工具" ;;
-      subtitle)  echo "按提示回答或直接回车使用默认值" ;;
-      q_type)    echo "构建目标 (cpu / gpu / all)" ;;
-      q_arch)    echo "目标架构 (amd64 / arm64 / multi)" ;;
+      subtitle)  echo "按提示选择或直接回车使用默认值" ;;
+      q_lang)    echo "界面语言" ;;
+      q_type)    echo "构建目标" ;;
+      q_arch)    echo "目标架构" ;;
       q_version) echo "镜像版本" ;;
-      q_push)    echo "推送到仓库 (y/n)" ;;
-      q_export)  echo "导出 tar.gz (y/n)" ;;
+      q_push)    echo "推送到仓库" ;;
+      q_export)  echo "导出 tar.gz" ;;
       q_output)  echo "输出目录" ;;
       q_reg)     echo "仓库命名空间" ;;
-      q_cache)   echo "禁用构建缓存 (y/n)" ;;
-      q_lang)    echo "界面语言 (zh / en / auto)" ;;
+      q_cache)   echo "禁用构建缓存" ;;
       q_confirm) echo "确认并开始构建" ;;
       summary)   echo "构建摘要" ;;
       cancel)    echo "已取消" ;;
       start)     echo "开始构建..." ;;
       done)      echo "构建完成" ;;
       recent)    echo "最近镜像" ;;
+      opt_cpu)   echo "CPU" ;;
+      opt_gpu)   echo "GPU" ;;
+      opt_all)   echo "全部 (CPU + GPU)" ;;
+      opt_amd64) echo "amd64 (x86_64)" ;;
+      opt_arm64) echo "arm64 (Apple Silicon / ARM)" ;;
+      opt_multi) echo "多架构 (amd64 + arm64)" ;;
       err_inv)   echo "无效输入" ;;
       err_opt)   echo "未知选项" ;;
       err_gpu)   echo "GPU 构建仅支持 amd64" ;;
@@ -63,22 +68,28 @@ _msg() {
   else
     case "$k" in
       title)     echo "FunASR-API Docker Build Tool" ;;
-      subtitle)  echo "Answer prompts or press Enter for defaults" ;;
-      q_type)    echo "Build target (cpu / gpu / all)" ;;
-      q_arch)    echo "Architecture (amd64 / arm64 / multi)" ;;
+      subtitle)  echo "Select options or press Enter for defaults" ;;
+      q_lang)    echo "Language" ;;
+      q_type)    echo "Build target" ;;
+      q_arch)    echo "Architecture" ;;
       q_version) echo "Image version" ;;
-      q_push)    echo "Push to registry (y/n)" ;;
-      q_export)  echo "Export tar.gz (y/n)" ;;
+      q_push)    echo "Push to registry" ;;
+      q_export)  echo "Export tar.gz" ;;
       q_output)  echo "Output directory" ;;
       q_reg)     echo "Registry namespace" ;;
-      q_cache)   echo "Disable cache (y/n)" ;;
-      q_lang)    echo "Language (zh / en / auto)" ;;
+      q_cache)   echo "Disable build cache" ;;
       q_confirm) echo "Confirm and start build" ;;
       summary)   echo "Build summary" ;;
       cancel)    echo "Cancelled" ;;
       start)     echo "Starting build..." ;;
       done)      echo "Build complete" ;;
       recent)    echo "Recent images" ;;
+      opt_cpu)   echo "CPU" ;;
+      opt_gpu)   echo "GPU" ;;
+      opt_all)   echo "All (CPU + GPU)" ;;
+      opt_amd64) echo "amd64 (x86_64)" ;;
+      opt_arm64) echo "arm64 (Apple Silicon / ARM)" ;;
+      opt_multi) echo "Multi-arch (amd64 + arm64)" ;;
       err_inv)   echo "Invalid input" ;;
       err_opt)   echo "Unknown option" ;;
       err_gpu)   echo "GPU build only supports amd64" ;;
@@ -204,6 +215,40 @@ _ask_bool() {
   esac
 }
 
+# Ask a choice from numbered options.
+# Usage: _ask_choice "prompt" default_num label1 value1 label2 value2 ...
+_ask_choice() {
+  local prompt="$1" default="$2"
+  shift 2
+  local labels=() values=() i=1
+  while [[ $# -ge 2 ]]; do
+    labels+=("$1")
+    values+=("$2")
+    shift 2
+  done
+
+  echo
+  echo "  ${prompt}:"
+  local idx=1
+  for label in "${labels[@]}"; do
+    local mark=" "
+    [[ "$idx" -eq "$default" ]] && mark="*"
+    echo "    ${mark}${idx}. ${label}"
+    ((idx++))
+  done
+
+  local val
+  read -r -p "  > " val
+  val="${val:-$default}"
+
+  if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -ge 1 && "$val" -le "${#labels[@]}" ]]; then
+    printf "%s" "${values[$((val-1))]}"
+  else
+    warn "$(_msg err_inv): ${val}, using default ${default}"
+    printf "%s" "${values[$((default-1))]}"
+  fi
+}
+
 interactive_mode() {
   echo
   echo "========================================"
@@ -212,22 +257,41 @@ interactive_mode() {
   echo "========================================"
   echo
 
-  BUILD_TYPE="$(_ask "$(_msg q_type)" "$BUILD_TYPE")"
-  local arch; arch="$(arch_label "$PLATFORM")"
-  arch="$(_ask "$(_msg q_arch)" "$arch")"
-  PLATFORM="$(parse_arch "$arch")"
+  # 1. Language first so subsequent prompts use it
+  LANG_MODE="$(_ask "$(_msg q_lang)" "$LANG_MODE")"
+  echo
+
+  # 2. Build type (numbered)
+  BUILD_TYPE="$(_ask_choice "$(_msg q_type)" 3 \
+    "$(_msg opt_cpu)" "cpu" \
+    "$(_msg opt_gpu)" "gpu" \
+    "$(_msg opt_all)" "all")"
+
+  # 3. Architecture (numbered)
+  local default_arch=1
+  [[ "$(arch_label "$PLATFORM")" == "arm64" ]] && default_arch=2
+  [[ "$(arch_label "$PLATFORM")" == "multi" ]] && default_arch=3
+  local arch_val
+  arch_val="$(_ask_choice "$(_msg q_arch)" "$default_arch" \
+    "$(_msg opt_amd64)" "amd64" \
+    "$(_msg opt_arm64)" "arm64" \
+    "$(_msg opt_multi)" "multi")"
+  PLATFORM="$(parse_arch "$arch_val")"
+
+  # 4. Free-form inputs
   VERSION="$(_ask "$(_msg q_version)" "$VERSION")"
   PUSH="$(_ask_bool "$(_msg q_push)" "$PUSH")"
   EXPORT_TAR="$(_ask_bool "$(_msg q_export)" "$EXPORT_TAR")"
   [[ "$EXPORT_TAR" == "true" ]] && EXPORT_DIR="$(_ask "$(_msg q_output)" "$EXPORT_DIR")"
   REGISTRY="$(_ask "$(_msg q_reg)" "$REGISTRY")"
   NO_CACHE="$(_ask_bool "$(_msg q_cache)" "$NO_CACHE")"
-  LANG_MODE="$(_ask "$(_msg q_lang)" "$LANG_MODE")"
 
+  # Summary
   echo
   echo "----------------------------------------"
   echo "  $(_msg summary)"
   echo "----------------------------------------"
+  echo "  $(_msg q_lang):    $LANG_MODE"
   echo "  $(_msg q_type):    $BUILD_TYPE"
   echo "  $(_msg q_arch):    $(arch_label "$PLATFORM")"
   echo "  $(_msg q_version): $VERSION"
@@ -250,22 +314,21 @@ interactive_mode() {
 # =============================================================================
 
 show_help() {
-  local l; l="$(_resolve_lang)"
   cat <<EOF
 $(_msg title)
 
 Usage: ./build.sh [options]
 
 Options:
-  -t, --type TYPE     $(_msg q_type) (default: all)
-  -a, --arch ARCH     $(_msg q_arch) (default: amd64)
+  -t, --type TYPE     $(_msg q_type): cpu, gpu, all (default: all)
+  -a, --arch ARCH     $(_msg q_arch): amd64, arm64, multi (default: amd64)
   -v, --version VER   $(_msg q_version) (default: latest)
   -p, --push          $(_msg q_push)
   -e, --export        $(_msg q_export)
   -o, --output DIR    $(_msg q_output) (default: .)
   -r, --registry REG  $(_msg q_reg) (default: quantatrisk)
   -n, --no-cache      $(_msg q_cache)
-  -l, --lang LANG     $(_msg q_lang) (default: auto)
+  -l, --lang LANG     $(_msg q_lang): zh, en, auto (default: auto)
   -h, --help          Show this help
 
 Examples:
