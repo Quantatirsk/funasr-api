@@ -11,18 +11,16 @@ FunASR-API 使用以下模型仓库：
 | ModelScope | `~/.cache/modelscope/hub/models` | FunASR 模型（Paraformer、VAD、CAM++ 等） |
 | HuggingFace | `~/.cache/huggingface` | Qwen3-ASR 模型（CUDA 和 CPU/macOS 共用） |
 
-## 自动下载（推荐）
+## 预下载（推荐）
 
-模型会在服务首次启动时自动下载。启动服务后，模型将自动缓存到上述路径。
-
-## 手动预下载
+当前默认启用 `HF_HUB_LOCAL_FILES_ONLY=1`，推荐在启动前先准备模型缓存，而不是依赖首次启动时联网拉取。
 
 如需预下载模型（例如内网部署场景），推荐使用辅助脚本：
 
 ### 方式一：使用辅助脚本（推荐）
 
 ```bash
-# 运行交互式模型准备脚本
+# 运行模型准备脚本
 ./scripts/prepare-models.sh
 ```
 
@@ -33,37 +31,26 @@ FunASR-API 使用以下模型仓库：
 
 下载完成后，脚本会自动打包为 `funasr-models-<timestamp>.tar.gz`，可直接复制到内网服务器使用。
 
-### 方式二：使用 Python 手动下载
+### 方式二：直接使用项目 CLI
 
-如需更精细控制，可以直接使用 Python 下载：
+如果不需要交互式包装层，可以直接使用项目内置 CLI：
 
-**ModelScope 模型（FunASR）：**
+```bash
+# 仅下载到默认缓存目录
+uv run python -m app.utils.download_models
 
-```python
-from modelscope import snapshot_download
-
-snapshot_download("damo/speech_fsmn_vad_zh-cn-16k-common-pytorch")
-snapshot_download("iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch")
-snapshot_download("iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727")
-snapshot_download("iic/speech_campplus_speaker-diarization_common")
-snapshot_download("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online")
+# 同时导出到指定目录（适合离线打包）
+uv run python -m app.utils.download_models --export-dir ./models
 ```
 
-**HuggingFace 模型（Qwen3-ASR）：**
-
-```python
-from huggingface_hub import snapshot_download
-
-snapshot_download("Qwen/Qwen3-ASR-1.7B")
-snapshot_download("Qwen/Qwen3-ASR-0.6B")
-```
+这样会直接复用项目当前的能力分组和运行计划，不需要在文档里手工维护模型 ID 列表。
 
 ## 内网部署
 
 ### 步骤 1: 在外网机器准备模型
 
 ```bash
-# 运行辅助脚本，交互式选择需要的模型
+# 运行辅助脚本，按当前运行计划导出模型包
 ./scripts/prepare-models.sh
 
 # 脚本会生成类似 funasr-models-20250206-143022.tar.gz 的文件

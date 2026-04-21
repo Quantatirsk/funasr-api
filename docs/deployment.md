@@ -153,7 +153,7 @@ curl -X POST "http://localhost:17003/v1/audio/transcriptions" \
 
 ```bash
 # 构建 CPU 版本
-docker build -t funasr-api:latest -f Dockerfile .
+docker build -t funasr-api:cpu-latest -f Dockerfile.cpu .
 
 # 构建 GPU 版本
 docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
@@ -181,7 +181,8 @@ docker build -t funasr-api:gpu-latest -f Dockerfile.gpu .
 
 ### 模型下载
 
-模型将在首次启动时自动下载。如需预下载或内网部署，请参考 [MODEL_SETUP.md](./MODEL_SETUP.md)。
+当前默认启用 `HF_HUB_LOCAL_FILES_ONLY=1`，推荐在启动前先准备模型缓存。
+如需预下载或内网部署，请参考 [MODEL_SETUP.md](./MODEL_SETUP.md)。
 
 ## 环境变量配置
 
@@ -408,7 +409,7 @@ docker exec -it funasr-api nvidia-smi
 | 问题 | 症状 | 解决方案 |
 |------|------|----------|
 | GPU 内存不足 | CUDA OOM 错误 | 设置 `DEVICE=cpu` 或使用更大显存的 GPU |
-| 模型加载慢 | 首次启动超时 | 模型会自动下载，首次需要等待 |
+| 模型加载失败 / 缓慢 | 本地模型缓存缺失 | 先运行 `./scripts/prepare-models.sh` 或 `uv run python -m app.utils.download_models` 预准备模型 |
 | 端口被占用 | 端口冲突错误 | 修改端口映射：`"8080:8000"` |
 | 说话人分离失败 | CAM++ 模型错误 | 检查模型是否完整下载，显存是否充足 |
 

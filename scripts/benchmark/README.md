@@ -21,13 +21,13 @@ uv run python start.py
 
 ```bash
 # 完整测试 (ASR + TTS)
-python -m scripts.benchmark.run --audio-file /path/to/audio.wav
+uv run python -m scripts.benchmark.run --audio-file /path/to/audio.wav
 
 # 仅测试 TTS (无需音频文件)
-python -m scripts.benchmark.run --test-type tts
+uv run python -m scripts.benchmark.run --test-type tts
 
 # 仅测试 ASR
-python -m scripts.benchmark.run --audio-file /path/to/audio.wav --test-type asr
+uv run python -m scripts.benchmark.run --audio-file /path/to/audio.wav --test-type asr
 
 # Qwen Rust CPU worker 对比测试（固定 VAD 分段）
 uv run python -m scripts.benchmark.qwen_rust_sensitivity \
@@ -101,18 +101,18 @@ TTS 测试模拟 LLM 流式输出场景，按标点符号（逗号、句号、�
 
 ```bash
 # 自定义并发级别
-python -m scripts.benchmark.run \
+uv run python -m scripts.benchmark.run \
   --audio-file test.wav \
   --concurrency 5 10 20 50 100
 
 # 连接远程服务器
-python -m scripts.benchmark.run \
+uv run python -m scripts.benchmark.run \
   --host 192.168.1.100 \
   --port 8000 \
   --test-type tts
 
 # 使用不同音色测试 TTS
-python -m scripts.benchmark.run \
+uv run python -m scripts.benchmark.run \
   --test-type tts \
   --voice 中文男
 ```
