@@ -22,7 +22,7 @@
 **前置要求：**
 - NVIDIA GPU (CUDA 12.6+)
 - 已安装 NVIDIA Container Toolkit
-- 显存 6GB+（推荐 16GB+ 以支持 Qwen3-ASR 1.7B）
+- 显存 12GB+（推荐 16GB+ 以支持 Qwen3-ASR 1.7B）
 
 ```bash
 # 使用 docker run（带模型挂载）
@@ -432,7 +432,7 @@ docker exec -it funasr-api nvidia-smi
 
 - CPU: 8 核
 - 内存: 16GB
-- GPU: NVIDIA GPU (6GB+ 显存，含说话人分离模型)
+- GPU: NVIDIA GPU (12GB+ 显存，含说话人分离模型)
 - 磁盘: 25GB
 
 ## 故障排除
