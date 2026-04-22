@@ -41,8 +41,8 @@ RUN cargo build --release -p qwen-asr --features ffi --manifest-path /tmp/qwenas
     && cp /tmp/qwenasr/target/release/libqwen_asr.so /opt/qwenasr/lib/libqwen_asr.so
 
 # Install Python dependencies (CPU mode)
-COPY pyproject.toml uv.lock* /app/
-RUN uv sync --group cpu --no-dev --no-install-project --frozen
+COPY environments/cpu /app/environments/cpu
+RUN uv sync --project /app/environments/cpu --no-dev --no-install-project --frozen
 
 # Clean build tools and cache to reduce image size
 RUN apt remove -y build-essential curl && apt autoremove -y \

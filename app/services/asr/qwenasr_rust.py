@@ -40,28 +40,6 @@ _LANGUAGE_MAP = {
 }
 
 
-def resolve_qwenasr_num_threads(worker_count: int) -> int:
-    """Choose a safe default thread count for the vendored QwenASR runtime.
-
-    Upstream kernels currently panic when multiple Rust runtimes execute in
-    parallel while each runtime also uses automatic intra-op threading.
-    We therefore keep the historical auto-threading behavior for single-worker
-    deployments, but default to one thread per runtime when the service is
-    configured to run multiple CPU Rust workers.
-    """
-
-    configured = (os.getenv("QWENASR_CPU_NUM_THREADS") or "").strip()
-    if configured:
-        value = int(configured)
-        if value < 0:
-            raise ValueError("QWENASR_CPU_NUM_THREADS must be >= 0")
-        return value
-
-    if worker_count <= 1:
-        return 0
-    return 1
-
-
 def _shared_library_filename() -> str:
     if sys.platform == "darwin":
         return "libqwen_asr.dylib"

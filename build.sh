@@ -18,16 +18,14 @@ PUSH="false"
 EXPORT_TAR="false"
 EXPORT_DIR="."
 NO_CACHE="false"
-LANG_MODE="auto"
+LANG_MODE="zh"
 
 # =============================================================================
 # Localization
 # =============================================================================
 
 _resolve_lang() {
-  if [[ "$LANG_MODE" != "auto" ]]; then printf "%s" "$LANG_MODE"; return; fi
-  local sys="${LANG:-${LC_ALL:-}}"
-  if [[ "$sys" == [zZ][hH]* ]]; then printf "zh"; else printf "en"; fi
+  printf "%s" "$LANG_MODE"
 }
 
 _msg() {
@@ -63,7 +61,6 @@ _msg() {
       err_bx)    echo "需要 Docker Buildx" ;;
       yes)       echo "是" ;;
       no)        echo "否" ;;
-      auto)      echo "自动" ;;
     esac
   else
     case "$k" in
@@ -96,7 +93,6 @@ _msg() {
       err_bx)    echo "Docker Buildx is required" ;;
       yes)       echo "yes" ;;
       no)        echo "no" ;;
-      auto)      echo "auto" ;;
     esac
   fi
 }
@@ -197,29 +193,42 @@ build_gpu() {
 # =============================================================================
 
 _ask() {
-  local prompt="$1" default="$2"
+  local __var_name="$1" prompt="$2" default="$3" l
   local val
-  read -r -p "${prompt} [${default}]: " val
-  printf "%s" "${val:-$default}"
+  l="$(_resolve_lang)"
+  if [[ "$l" == "zh" ]]; then
+    read -r -p "${prompt} (默认: ${default}): " val
+  else
+    read -r -p "${prompt} (default: ${default}): " val
+  fi
+  printf -v "$__var_name" "%s" "${val:-$default}"
 }
 
 _ask_bool() {
-  local prompt="$1" default="$2"
+  local __var_name="$1" prompt="$2" default="$3" hint l
   local val
-  read -r -p "${prompt} [$(_label_bool "$default")]: " val
+  l="$(_resolve_lang)"
+  if [[ "$default" == "true" ]]; then
+    hint="[Y/n]"
+  else
+    hint="[y/N]"
+  fi
+  if [[ "$l" == "zh" ]]; then
+    read -r -p "${prompt} ${hint}: " val
+  else
+    read -r -p "${prompt} ${hint}: " val
+  fi
   case "${val:-}" in
-    [Yy]|[Yy][Ee][Ss]|是) echo "true" ;;
-    [Nn]|[Nn][Oo]|否)     echo "false" ;;
-    "")                   echo "$default" ;;
-    *) warn "$(_msg err_inv): ${val}"; echo "$default" ;;
+    [Yy]|[Yy][Ee][Ss]|是) printf -v "$__var_name" "%s" "true" ;;
+    [Nn]|[Nn][Oo]|否)     printf -v "$__var_name" "%s" "false" ;;
+    "")                   printf -v "$__var_name" "%s" "$default" ;;
+    *) warn "$(_msg err_inv): ${val}"; printf -v "$__var_name" "%s" "$default" ;;
   esac
 }
 
-# Ask a choice from numbered options.
-# Usage: _ask_choice "prompt" default_num label1 value1 label2 value2 ...
 _ask_choice() {
-  local prompt="$1" default="$2"
-  shift 2
+  local __var_name="$1" prompt="$2" default="$3" l
+  shift 3
   local labels=() values=() i=1
   while [[ $# -ge 2 ]]; do
     labels+=("$1")
@@ -227,79 +236,96 @@ _ask_choice() {
     shift 2
   done
 
+  l="$(_resolve_lang)"
   echo >&2
-  echo "  ${prompt}:" >&2
+  echo "${prompt}:" >&2
   local idx=1
   for label in "${labels[@]}"; do
-    local mark=" "
-    [[ "$idx" -eq "$default" ]] && mark="*"
-    echo "    ${mark}${idx}. ${label}" >&2
+    if [[ "$idx" -eq "$default" ]]; then
+      if [[ "$l" == "zh" ]]; then
+        echo "  ${idx}) ${label} [默认]" >&2
+      else
+        echo "  ${idx}) ${label} [default]" >&2
+      fi
+    else
+      echo "  ${idx}) ${label}" >&2
+    fi
     ((idx++))
   done
 
   local val
-  read -r -p "  > " val
+  if [[ "$l" == "zh" ]]; then
+    read -r -p "请选择 [1-${#labels[@]}] (默认: ${default}): " val
+  else
+    read -r -p "Select [1-${#labels[@]}] (default: ${default}): " val
+  fi
   val="${val:-$default}"
 
   if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -ge 1 && "$val" -le "${#labels[@]}" ]]; then
-    printf "%s" "${values[$((val-1))]}"
+    printf -v "$__var_name" "%s" "${values[$((val-1))]}"
   else
-    warn "$(_msg err_inv): ${val}, using default ${default}"
-    printf "%s" "${values[$((default-1))]}"
+    if [[ "$l" == "zh" ]]; then
+      warn "$(_msg err_inv): ${val}，使用默认值 ${default}"
+    else
+      warn "$(_msg err_inv): ${val}, using default ${default}"
+    fi
+    printf -v "$__var_name" "%s" "${values[$((default-1))]}"
   fi
 }
 
 interactive_mode() {
   echo
   echo "========================================"
-  echo "  $(_msg title)"
-  echo "  $(_msg subtitle)"
+  echo "$(_msg title)"
+  echo "$(_msg subtitle)"
   echo "========================================"
   echo
 
   # 1. Language first so subsequent prompts use it
-  LANG_MODE="$(_ask "$(_msg q_lang)" "$LANG_MODE")"
+  _ask_choice LANG_MODE "$(_msg q_lang)" 1 \
+    "中文" "zh" \
+    "English" "en"
   echo
 
   # 2. Build type (numbered)
-  BUILD_TYPE="$(_ask_choice "$(_msg q_type)" 3 \
+  _ask_choice BUILD_TYPE "$(_msg q_type)" 3 \
     "$(_msg opt_cpu)" "cpu" \
     "$(_msg opt_gpu)" "gpu" \
-    "$(_msg opt_all)" "all")"
+    "$(_msg opt_all)" "all"
 
   # 3. Architecture (numbered)
   local default_arch=1
   [[ "$(arch_label "$PLATFORM")" == "arm64" ]] && default_arch=2
   [[ "$(arch_label "$PLATFORM")" == "multi" ]] && default_arch=3
   local arch_val
-  arch_val="$(_ask_choice "$(_msg q_arch)" "$default_arch" \
+  _ask_choice arch_val "$(_msg q_arch)" "$default_arch" \
     "$(_msg opt_amd64)" "amd64" \
     "$(_msg opt_arm64)" "arm64" \
-    "$(_msg opt_multi)" "multi")"
+    "$(_msg opt_multi)" "multi"
   PLATFORM="$(parse_arch "$arch_val")"
 
   # 4. Free-form inputs
-  VERSION="$(_ask "$(_msg q_version)" "$VERSION")"
-  PUSH="$(_ask_bool "$(_msg q_push)" "$PUSH")"
-  EXPORT_TAR="$(_ask_bool "$(_msg q_export)" "$EXPORT_TAR")"
-  [[ "$EXPORT_TAR" == "true" ]] && EXPORT_DIR="$(_ask "$(_msg q_output)" "$EXPORT_DIR")"
-  REGISTRY="$(_ask "$(_msg q_reg)" "$REGISTRY")"
-  NO_CACHE="$(_ask_bool "$(_msg q_cache)" "$NO_CACHE")"
+  _ask VERSION "$(_msg q_version)" "$VERSION"
+  _ask_bool PUSH "$(_msg q_push)" "$PUSH"
+  _ask_bool EXPORT_TAR "$(_msg q_export)" "$EXPORT_TAR"
+  [[ "$EXPORT_TAR" == "true" ]] && _ask EXPORT_DIR "$(_msg q_output)" "$EXPORT_DIR"
+  _ask REGISTRY "$(_msg q_reg)" "$REGISTRY"
+  _ask_bool NO_CACHE "$(_msg q_cache)" "$NO_CACHE"
 
   # Summary
   echo
   echo "----------------------------------------"
-  echo "  $(_msg summary)"
+  echo "$(_msg summary)"
   echo "----------------------------------------"
-  echo "  $(_msg q_lang):    $LANG_MODE"
-  echo "  $(_msg q_type):    $BUILD_TYPE"
-  echo "  $(_msg q_arch):    $(arch_label "$PLATFORM")"
-  echo "  $(_msg q_version): $VERSION"
-  echo "  $(_msg q_push):    $(_label_bool "$PUSH")"
-  echo "  $(_msg q_export):  $(_label_bool "$EXPORT_TAR")"
-  [[ "$EXPORT_TAR" == "true" ]] && echo "  $(_msg q_output):  $EXPORT_DIR"
-  echo "  $(_msg q_reg):     $REGISTRY"
-  echo "  $(_msg q_cache):   $(_label_bool "$NO_CACHE")"
+  echo "$(_msg q_lang):    $LANG_MODE"
+  echo "$(_msg q_type):    $BUILD_TYPE"
+  echo "$(_msg q_arch):    $(arch_label "$PLATFORM")"
+  echo "$(_msg q_version): $VERSION"
+  echo "$(_msg q_push):    $(_label_bool "$PUSH")"
+  echo "$(_msg q_export):  $(_label_bool "$EXPORT_TAR")"
+  [[ "$EXPORT_TAR" == "true" ]] && echo "$(_msg q_output):  $EXPORT_DIR"
+  echo "$(_msg q_reg):     $REGISTRY"
+  echo "$(_msg q_cache):   $(_label_bool "$NO_CACHE")"
   echo
 
   local confirm
@@ -328,7 +354,7 @@ Options:
   -o, --output DIR    $(_msg q_output) (default: .)
   -r, --registry REG  $(_msg q_reg) (default: quantatrisk)
   -n, --no-cache      $(_msg q_cache)
-  -l, --lang LANG     $(_msg q_lang): zh, en, auto (default: auto)
+  -l, --lang LANG     $(_msg q_lang): zh, en (default: zh)
   -h, --help          Show this help
 
 Examples:

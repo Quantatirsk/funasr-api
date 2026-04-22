@@ -32,21 +32,27 @@ RUN apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install uv and sync GPU dependencies from pyproject.toml
+# Install uv and sync default GPU dependencies from root project lock
 # Ubuntu 24.04 的 Python 是 externally managed，必须使用 venv
 RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock* /app/
 RUN uv venv /opt/venv && \
-    uv sync --group gpu --no-dev --no-install-project
+    uv sync --no-dev --no-install-project --frozen
 
-# Override CPU-only torch installed by uv sync with CUDA-enabled version.
-# pyproject.toml [tool.uv.sources] redirects torch to pytorch-cpu index on Linux,
-# which replaces the base image's CUDA torch. Reinstall from cu126 to restore it.
-RUN uv pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu126
+# Fail the image build early if the runtime dependency chain is inconsistent.
+RUN /opt/venv/bin/python - <<'PY'
+import torch
+import torchaudio
+import transformers
+import vllm
+from transformers import PreTrainedModel
 
-# Install vllm separately to avoid dependency conflicts with transformers in pyproject.toml.
-# vllm 0.18.x stable requires transformers>=4.45, which is compatible with funasr/modelscope.
-RUN uv pip install "vllm[audio]==0.18.3"
+print("torch", torch.__version__)
+print("torchaudio", torchaudio.__version__)
+print("transformers", transformers.__version__)
+print("vllm", vllm.__version__)
+print("PreTrainedModel", PreTrainedModel)
+PY
 
 # Clean apt cache but keep build-essential and cuda-nvcc-12-6 for FlashInfer JIT compilation
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*

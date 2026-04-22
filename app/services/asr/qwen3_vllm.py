@@ -165,8 +165,8 @@ class Qwen3VLLMBackend:
             transformers_module = importlib.import_module("transformers")
         except ImportError as exc:
             raise RuntimeError(
-                "CUDA Qwen3-ASR now requires official vLLM nightly. "
-                "Install it with: pip install --pre 'vllm[audio]'"
+                "CUDA Qwen3-ASR now requires official vLLM with Qwen3 forced aligner support. "
+                "Install it with: pip install 'vllm[audio]==0.19.0'"
             ) from exc
 
         self._llm_cls = getattr(vllm_module, "LLM")

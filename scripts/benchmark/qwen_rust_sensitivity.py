@@ -1,18 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Qwen Rust CPU worker comparison benchmark.
-
-This benchmark fixes the workload to a single end-to-end path:
-
-- VAD split once on the same audio file
-- Rust ASR stage
-- Rust forced alignment stage
-
-It compares a small set of worker profiles, typically:
-
-- 4 workers
-- CPU-count workers
-"""
+"""Qwen Rust CPU end-to-end benchmark for the current runtime configuration."""
 
 from __future__ import annotations
 
@@ -32,9 +19,10 @@ from app.utils.audio_splitter import AudioSplitter
 
 @dataclass
 class WorkerBenchRow:
-    profile: str
-    workers: int
     cpu_count: int
+    rust_workers: int
+    asr_concurrency: int
+    align_concurrency: int
     audio_file: str
     audio_duration_sec: float
     batch_size: int
@@ -78,16 +66,17 @@ def _render_markdown(rows: list[WorkerBenchRow]) -> str:
         f"- batch size：`{batch_size}`",
         f"- CPU 数量：`{cpu_count}`",
         "",
-        "| 配置 | workers | total_sec | RTF | engine_init_sec | vad_sec | asr_sec | align_sec | segments | word_tokens | text_len |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        f"- Rust workers：`{rows[0].rust_workers}`",
+        f"- ASR concurrency：`{rows[0].asr_concurrency}`",
+        f"- Align concurrency：`{rows[0].align_concurrency}`",
+        "",
+        "| total_sec | RTF | engine_init_sec | vad_sec | asr_sec | align_sec | segments | word_tokens | text_len |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
-    sorted_rows = sorted(rows, key=lambda row: row.workers)
-    for row in sorted_rows:
+    for row in rows:
         lines.append(
             "| "
-            f"{row.profile} | "
-            f"{row.workers} | "
             f"{row.total_sec:.2f} | "
             f"{row.rtf:.4f} | "
             f"{row.engine_init_sec:.3f} | "
@@ -99,20 +88,16 @@ def _render_markdown(rows: list[WorkerBenchRow]) -> str:
             f"{row.text_len} |"
         )
 
-    best_row = min(sorted_rows, key=lambda row: row.total_sec)
-    worst_row = max(sorted_rows, key=lambda row: row.total_sec)
-    improvement = 0.0
-    if worst_row.total_sec > 0:
-        improvement = (worst_row.total_sec - best_row.total_sec) / worst_row.total_sec * 100
+    row = rows[0]
 
     lines.extend(
         [
             "",
             "## 结论",
             "",
-            f"- 最优配置：`{best_row.profile}`（`{best_row.workers}` workers）",
-            f"- 最慢配置：`{worst_row.profile}`（`{worst_row.workers}` workers）",
-            f"- 最优配置相对最慢配置耗时下降：`{improvement:.1f}%`",
+            f"- 当前配置：workers=`{row.rust_workers}` / asr=`{row.asr_concurrency}` / align=`{row.align_concurrency}`",
+            f"- 总耗时：`{row.total_sec:.2f}s`",
+            f"- RTF：`{row.rtf:.4f}`",
             "",
         ]
     )
@@ -130,44 +115,19 @@ def _persist_markdown(rows: list[WorkerBenchRow], markdown_out: Path | None) -> 
 def _log_progress(row: WorkerBenchRow) -> None:
     print(
         (
-            f"[bench] profile={row.profile} "
-            f"workers={row.workers} "
+            f"[bench] workers={row.rust_workers} "
+            f"asr={row.asr_concurrency} "
+            f"align={row.align_concurrency} "
             f"total={row.total_sec:.2f}s "
             f"rtf={row.rtf:.4f} "
-            f"asr={row.asr_sec:.2f}s "
-            f"align={row.align_sec:.2f}s "
+            f"asr_sec={row.asr_sec:.2f}s "
+            f"align_sec={row.align_sec:.2f}s "
             f"segments={row.segments} "
             f"words={row.word_tokens}"
         ),
         file=sys.stderr,
         flush=True,
-    )
-
-
-def _resolve_workers(raw: str, cpu_count: int) -> tuple[str, int]:
-    token = raw.strip().lower()
-    if token == "cpu":
-        return "cpu", cpu_count
-    workers = int(token)
-    if workers <= 0:
-        raise ValueError(f"workers must be > 0, got {workers}")
-    return token, workers
-
-
-def _parse_worker_profiles(raw: str) -> list[tuple[str, int]]:
-    cpu_count = os.cpu_count() or 1
-    profiles: list[tuple[str, int]] = []
-    seen: set[tuple[str, int]] = set()
-    for item in raw.split(","):
-        if not item.strip():
-            continue
-        profile = _resolve_workers(item, cpu_count)
-        if profile not in seen:
-            profiles.append(profile)
-            seen.add(profile)
-    if not profiles:
-        raise ValueError("at least one worker profile is required")
-    return profiles
+)
 
 
 def _clean_segments(segments: list) -> None:
@@ -190,13 +150,9 @@ def _build_engine(
     forced_aligner_path: str,
     *,
     batch_size: int,
-    workers: int,
 ) -> tuple[Qwen3ASREngine, float]:
     settings.DEVICE = "cpu"
     settings.ASR_BATCH_SIZE = batch_size
-    settings.QWEN_RUST_CPU_WORKERS = workers
-    settings.QWEN_RUST_ASR_CONCURRENCY = workers
-    settings.QWEN_RUST_ALIGN_CONCURRENCY = workers
 
     t0 = time.perf_counter()
     engine = Qwen3ASREngine(
@@ -243,8 +199,6 @@ def _run_align_stage(
 
 def _summarize(
     *,
-    profile: str,
-    workers: int,
     cpu_count: int,
     audio_file: Path,
     audio_duration_sec: float,
@@ -261,9 +215,10 @@ def _summarize(
     text_len = sum(len(text) for text in texts.values())
     word_tokens = sum(len(items) for items in aligned.values())
     return WorkerBenchRow(
-        profile=profile,
-        workers=workers,
         cpu_count=cpu_count,
+        rust_workers=settings.QWEN_RUST_CPU_WORKERS,
+        asr_concurrency=settings.QWEN_RUST_ASR_CONCURRENCY or settings.QWEN_RUST_CPU_WORKERS,
+        align_concurrency=settings.QWEN_RUST_ALIGN_CONCURRENCY or settings.QWEN_RUST_CPU_WORKERS,
         audio_file=str(audio_file),
         audio_duration_sec=audio_duration_sec,
         batch_size=batch_size,
@@ -283,16 +238,11 @@ def _summarize(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Qwen Rust CPU worker comparison benchmark")
+    parser = argparse.ArgumentParser(description="Qwen Rust CPU end-to-end benchmark")
     parser.add_argument("--audio-file", required=True, help="Input audio file path")
     parser.add_argument("--model-path", default="Qwen/Qwen3-ASR-0.6B")
     parser.add_argument("--forced-aligner-path", default="Qwen/Qwen3-ForcedAligner-0.6B")
     parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument(
-        "--workers",
-        default="4,cpu",
-        help="Comma-separated worker profiles. Use integers or 'cpu' for os.cpu_count().",
-    )
     parser.add_argument("--json-out", help="Optional JSON output path")
     parser.add_argument(
         "--markdown-out",
@@ -306,7 +256,6 @@ def main() -> None:
     args = parser.parse_args()
 
     audio_file = Path(args.audio_file).expanduser().resolve()
-    worker_profiles = _parse_worker_profiles(args.workers)
     cpu_count = os.cpu_count() or 1
     out_path = Path(args.json_out).expanduser().resolve() if args.json_out else None
     markdown_out = Path(args.markdown_out).expanduser().resolve() if args.markdown_out else None
@@ -317,39 +266,35 @@ def main() -> None:
     rows: list[WorkerBenchRow] = []
 
     try:
-        for profile, workers in worker_profiles:
-            engine, init_sec = _build_engine(
-                args.model_path,
-                args.forced_aligner_path,
-                batch_size=args.batch_size,
-                workers=workers,
-            )
+        engine, init_sec = _build_engine(
+            args.model_path,
+            args.forced_aligner_path,
+            batch_size=args.batch_size,
+        )
 
-            t0 = time.perf_counter()
-            texts, asr_sec = _run_asr_stage(engine, segments)
-            aligned, align_sec = _run_align_stage(engine, segments, texts)
-            total_sec = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        texts, asr_sec = _run_asr_stage(engine, segments)
+        aligned, align_sec = _run_align_stage(engine, segments, texts)
+        total_sec = time.perf_counter() - t0
 
-            row = _summarize(
-                profile=profile,
-                workers=workers,
-                cpu_count=cpu_count,
-                audio_file=audio_file,
-                audio_duration_sec=duration,
-                batch_size=args.batch_size,
-                engine_init_sec=init_sec,
-                vad_sec=vad_sec,
-                segments=segments,
-                texts=texts,
-                aligned=aligned,
-                asr_sec=asr_sec,
-                align_sec=align_sec,
-                total_sec=total_sec,
-            )
-            rows.append(row)
-            _persist_rows(rows, out_path)
-            _persist_markdown(rows, markdown_out)
-            _log_progress(row)
+        row = _summarize(
+            cpu_count=cpu_count,
+            audio_file=audio_file,
+            audio_duration_sec=duration,
+            batch_size=args.batch_size,
+            engine_init_sec=init_sec,
+            vad_sec=vad_sec,
+            segments=segments,
+            texts=texts,
+            aligned=aligned,
+            asr_sec=asr_sec,
+            align_sec=align_sec,
+            total_sec=total_sec,
+        )
+        rows.append(row)
+        _persist_rows(rows, out_path)
+        _persist_markdown(rows, markdown_out)
+        _log_progress(row)
     finally:
         _clean_segments(segments)
 

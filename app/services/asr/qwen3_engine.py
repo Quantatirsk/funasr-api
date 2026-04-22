@@ -14,7 +14,6 @@ from .engines import BaseASREngine, ASRRawResult, ASRSegmentResult, WordToken
 from .qwenasr_rust import (
     QwenASRRustRuntime,
     is_qwenasr_rust_available,
-    resolve_qwenasr_num_threads,
 )
 from .qwen3_vllm import Qwen3VLLMBackend, is_vllm_available
 from ...core.exceptions import DefaultServerErrorException
@@ -190,8 +189,8 @@ class Qwen3ASREngine(BaseASREngine):
         if self._device.startswith("cuda"):
             if not is_vllm_available():
                 raise DefaultServerErrorException(
-                    "Current Python environment is missing official vLLM nightly. "
-                    "Install it with: pip install --pre 'vllm[audio]'"
+                    "Current Python environment is missing official vLLM with Qwen3 forced aligner support. "
+                    "Install it with: pip install 'vllm[audio]==0.19.0'"
                 )
             return "vllm"
         if self._device == "cpu" and is_qwenasr_rust_available():
@@ -205,10 +204,10 @@ class Qwen3ASREngine(BaseASREngine):
     ) -> QwenASRRustRuntime:
         logger.info("Loading Qwen3-ASR (QwenASR Rust): %s, device=%s", model_path, self._device)
 
-        num_threads = resolve_qwenasr_num_threads(settings.QWEN_RUST_CPU_WORKERS)
-        if not (os.getenv("QWENASR_CPU_NUM_THREADS") or "").strip() and settings.QWEN_RUST_CPU_WORKERS > 1:
+        num_threads = 0 if settings.QWEN_RUST_CPU_WORKERS <= 1 else 1
+        if settings.QWEN_RUST_CPU_WORKERS > 1:
             logger.info(
-                "Using safe QwenASR CPU thread count: num_threads=%s workers=%s",
+                "Using fixed QwenASR CPU thread count for multi-runtime mode: num_threads=%s workers=%s",
                 num_threads,
                 settings.QWEN_RUST_CPU_WORKERS,
             )
@@ -302,7 +301,6 @@ class Qwen3ASREngine(BaseASREngine):
         worker_count = self._get_rust_asr_concurrency(len(valid_segments))
         runtimes = self._get_rust_batch_runtimes(worker_count)
         output: dict[int, str] = {}
-
         for batch_start in range(0, len(valid_segments), worker_count):
             chunk = valid_segments[batch_start:batch_start + worker_count]
             chunk_runtimes = runtimes[:len(chunk)]
@@ -333,11 +331,11 @@ class Qwen3ASREngine(BaseASREngine):
         if not valid_segments:
             return {}
 
+        align_inputs = [(idx, seg, texts.get(idx, "")) for idx, seg in valid_segments if texts.get(idx, "").strip()]
         worker_count = self._get_rust_align_concurrency(len(valid_segments))
         runtimes = self._get_rust_batch_runtimes(worker_count)
         output: dict[int, list[WordToken]] = {}
 
-        align_inputs = [(idx, seg, texts.get(idx, "")) for idx, seg in valid_segments if texts.get(idx, "").strip()]
         if not align_inputs:
             return output
 
