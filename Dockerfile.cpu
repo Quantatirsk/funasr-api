@@ -5,10 +5,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    GOTO_NUM_THREADS=1 \
     QWENASR_LIBRARY_PATH=/opt/qwenasr/lib/libqwen_asr.so \
     PATH=/opt/venv/bin:$PATH \
     VIRTUAL_ENV=/opt/venv \
-    UV_PROJECT_ENVIRONMENT=/opt/venv
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    RUSTFLAGS="-C target-cpu=native"
 
 # Install system packages required for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,7 +39,9 @@ RUN uv venv /opt/venv
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Build QwenASR Rust shared library for CPU Qwen3-ASR inference
+# Build QwenASR Rust shared library for CPU Qwen3-ASR inference.
+# Use native CPU tuning for best throughput on the build host, and keep BLAS
+# single-threaded because higher-level Rust runtime concurrency is already used.
 RUN cargo build --release -p qwen-asr --features ffi --manifest-path /tmp/qwenasr/Cargo.toml \
     && mkdir -p /opt/qwenasr/lib \
     && cp /tmp/qwenasr/target/release/libqwen_asr.so /opt/qwenasr/lib/libqwen_asr.so
