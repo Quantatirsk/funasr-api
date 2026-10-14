@@ -13,6 +13,7 @@ from app.services.realtime.engine import Model
 from app.services.realtime.protocol import (
     OFFLINE_CONCURRENCY,
     OFFLINE_TAIL_SAMPLES,
+    SAMPLE_RATE,
     StreamConfig,
     StreamError,
 )
@@ -110,7 +111,9 @@ class SharedServerTest(unittest.TestCase):
         self.assertEqual(options["max_num_seqs"], 4 + OFFLINE_CONCURRENCY)
         self.assertEqual(options["scheduling_policy"], "priority")
         self.assertEqual(options["max_model_len"], 16384)
+        self.assertEqual(model.chunk_samples, round(0.64 * SAMPLE_RATE))
         self.assertEqual(model.offline_sampling["max_tokens"], 4096)
+        self.assertEqual(model.offline_final_sampling["max_tokens"], 128)
 
 
 class SharedGenerationTest(unittest.IsolatedAsyncioTestCase):
@@ -125,7 +128,79 @@ class SharedGenerationTest(unittest.IsolatedAsyncioTestCase):
         )
         model.sampling = {16: 16, 128: 128}
         model.offline_sampling = 4096
+        model.offline_final_sampling = 128
         return model
+
+    async def test_offline_finalization_is_independent_of_streaming_interval(
+        self,
+    ) -> None:
+        processor = SimpleNamespace(
+            tokenizer=Mock(), apply_chat_template=lambda *args, **kwargs: ""
+        )
+        for device in ("cpu", "cuda:0"):
+            for seconds in (None, 0.08, 0.16, 0.64, 0.65, 0.8, 1.0, 1.24, 1.25, 2):
+                with self.subTest(device=device, seconds=seconds):
+                    calls = []
+                    outputs = iter(
+                        ["language English<asr_text>Pending|", " done."]
+                    )
+
+                    async def generate(prompt, sampling, **kwargs):
+                        calls.append(sampling["max_tokens"])
+                        yield SimpleNamespace(
+                            outputs=[
+                                SimpleNamespace(
+                                    text=next(outputs), finish_reason="stop"
+                                )
+                            ]
+                        )
+
+                    engine = SimpleNamespace(
+                        tokenizer=processor, generate=generate, abort=AsyncMock()
+                    )
+                    modules = {
+                        "app.services.realtime.rust_engine": SimpleNamespace(
+                            RustAsyncEngine=lambda _: engine,
+                            SamplingParams=lambda **kwargs: kwargs,
+                        ),
+                        "vllm": SimpleNamespace(
+                            SamplingParams=lambda **kwargs: kwargs
+                        ),
+                        "vllm.engine.arg_utils": SimpleNamespace(
+                            AsyncEngineArgs=lambda **kwargs: kwargs
+                        ),
+                        "vllm.transformers_utils.processors.qwen3_asr": SimpleNamespace(
+                            Qwen3ASRProcessor=SimpleNamespace(
+                                from_pretrained=lambda *args, **kwargs: processor
+                            )
+                        ),
+                        "vllm.v1.engine.async_llm": SimpleNamespace(
+                            AsyncLLM=SimpleNamespace(
+                                from_engine_args=lambda _: engine
+                            )
+                        ),
+                    }
+                    env = (
+                        {}
+                        if seconds is None
+                        else {"R2T2_CHUNK_SECONDS": str(seconds)}
+                    )
+                    with (
+                        patch.dict(sys.modules, modules),
+                        patch.dict(os.environ, env, clear=True),
+                        patch.object(settings, "DEVICE", device),
+                    ):
+                        model = Model(4)
+                    self.assertEqual(
+                        model.chunk_samples,
+                        round((0.64 if seconds is None else seconds) * SAMPLE_RATE),
+                    )
+                    self.assertEqual(
+                        await model.transcribe(np.ones(SAMPLE_RATE), ""),
+                        "Pending done.",
+                    )
+                    self.assertEqual(calls, [4096, 128])
+                    engine.abort.assert_not_awaited()
 
     async def test_offline_uses_same_engine_without_live_prefix(self) -> None:
         model = self.model()

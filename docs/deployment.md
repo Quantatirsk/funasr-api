@@ -47,12 +47,13 @@ IMAGE=quantatrisk/asrserve:cpu ./scripts/prepare-models.sh   # 用 :cpu 镜像
 | `HF_ENDPOINT` | 官方地址 | 可选 Hugging Face 镜像 |
 | `R2T2_GPU_MEMORY_UTILIZATION` | `0.30` | R2T2 显存比例 |
 | `FORCED_ALIGNER_GPU_MEMORY_UTILIZATION` | `0.15` | 对齐模型显存比例 |
+| `R2T2_CHUNK_SECONDS` | `0.64` | GPU 和 CPU 实时解码间隔（秒），允许范围 0.08–2 |
 | `R2T2_CPU_THREADS` | `8` | Rust CPU 线程 |
 | `OPENBLAS_NUM_THREADS` | GPU `4`、CPU `8` | 矩阵运算线程 |
 
 显存比例均相对于整张显卡，需另给 Nemotron FP32 和运行时留空间。CPU 线程数按目标机器调节。
 
-应用参数通过 `.env` 传入容器；仅在宿主机 shell 中 export 不会自动传入。镜像固定 `DEVICE`，会话数默认 GPU 4、CPU 1。需要时可在 `.env` 添加 `R2T2_MAX_SESSIONS`、`R2T2_MAX_MODEL_LEN`（16384）、`R2T2_ENFORCE_EAGER`（0）或 `R2T2_CHUNK_SECONDS`（GPU 0.16、CPU 0.64）。内部鉴权可设置 `R2T2_INTERNAL_TOKEN`。
+应用参数通过 `.env` 传入容器；仅在宿主机 shell 中 export 不会自动传入。镜像固定 `DEVICE`，会话数默认 GPU 4、CPU 1。需要时可在 `.env` 添加 `R2T2_MAX_SESSIONS`、`R2T2_MAX_MODEL_LEN`（16384）、`R2T2_ENFORCE_EAGER`（0）或 `R2T2_CHUNK_SECONDS`（GPU 和 CPU 均为 0.64）。内部鉴权可设置 `R2T2_INTERNAL_TOKEN`。
 
 ## 模型与运行数据
 

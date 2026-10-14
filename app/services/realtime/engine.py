@@ -113,9 +113,7 @@ class Session:
 class Model:
     def __init__(self, max_sessions: int) -> None:
         self.device = settings.DEVICE
-        seconds = float(
-            os.getenv("R2T2_CHUNK_SECONDS", "0.64" if self.device == "cpu" else "0.16")
-        )
+        seconds = float(os.getenv("R2T2_CHUNK_SECONDS", "0.64"))
         if not math.isfinite(seconds) or not 0.08 <= seconds <= 2:
             raise ValueError("R2T2_CHUNK_SECONDS must be between 0.08 and 2 seconds")
         self.chunk_samples = round(seconds * SAMPLE_RATE)
@@ -168,6 +166,9 @@ class Model:
         self.offline_sampling = SamplingParams(
             temperature=0, max_tokens=4096, skip_special_tokens=True
         )
+        self.offline_final_sampling = SamplingParams(
+            temperature=0, max_tokens=128, skip_special_tokens=True
+        )
 
     def _prompt(self, context: str) -> str:
         return self.processor.apply_chat_template(
@@ -199,7 +200,7 @@ class Model:
                         "prompt": prompt + prefix,
                         "multi_modal_data": {"audio": [samples]},
                     },
-                    self.sampling[128] if final else self.offline_sampling,
+                    self.offline_final_sampling if final else self.offline_sampling,
                     request_id=request_id,
                     priority=10,
                 ):
@@ -236,7 +237,7 @@ class Model:
         if not session.size:
             return ""
         if not final and session.samples < session.next_decode:
-            # Keep pause detection at 160 ms even when CPU decoding runs less often.
+            # Keep pause detection at 160 ms even when decoding runs less often.
             if session.has_speech and session.quiet_samples >= 2 * CHUNK_SAMPLES:
                 delta = await self.push(
                     session, np.empty(0, dtype=np.float32), final=True
